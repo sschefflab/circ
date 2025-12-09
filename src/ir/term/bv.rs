@@ -253,7 +253,7 @@ impl BitVector {
 
 impl Display for BitVector {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        if self.width % 4 == 0 {
+        if self.width.is_multiple_of(4) {
             write!(
                 f,
                 "#x{:0>width$}",
