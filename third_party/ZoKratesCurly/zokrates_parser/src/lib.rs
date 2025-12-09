@@ -13,7 +13,7 @@ use pest::Parser;
 struct ZoKratesParser;
 
 #[allow(clippy::result_large_err)]
-pub fn parse(input: &str) -> Result<Pairs<Rule>, Error<Rule>> {
+pub fn parse(input: &str) -> Result<Pairs<'_, Rule>, Error<Rule>> {
     ZoKratesParser::parse(Rule::file, input)
 }
 
