@@ -106,7 +106,7 @@ impl ZLoad {
     /// ## Returns
     ///
     /// Returns a map from file paths to parsed files.
-    pub fn load<P: AsRef<Path>>(&self, p: &P) -> HashMap<PathBuf, ast::File> {
+    pub fn load<P: AsRef<Path>>(&self, p: &P) -> HashMap<PathBuf, ast::File<'_>> {
         self.recursive_load(p).unwrap()
     }
 
