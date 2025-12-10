@@ -45,7 +45,7 @@ Compile your ZoKrates program and save the R1CS:
     --prover-key P \
     --verifier-key V
 ```
-**Note: for modern ZoKrates, you need `language --zsharp-curly` before `r1cs`
+**Note: for modern ZoKrates, you need `--language zsharp-curly` before `r1cs`
 
 ### What This Does
 
