@@ -24,7 +24,7 @@ pub mod ast {
     pub use pest::Span;
     use pest_ast::FromPest;
 
-    fn span_into_str(span: Span) -> &str {
+    fn span_into_str(span: Span<'_>) -> &str {
         span.as_str()
     }
 
@@ -534,7 +534,7 @@ pub mod ast {
 }
 
 #[allow(clippy::result_large_err)]
-pub fn parse(file_string: &str) -> Result<ast::Program, Error<Rule>> {
+pub fn parse(file_string: &str) -> Result<ast::Program<'_>, Error<Rule>> {
     let mut pest_pairs = MyParser::parse(Rule::program, file_string)?;
     use from_pest::FromPest;
     Ok(ast::Program::from_pest(&mut pest_pairs).expect("bug in AST construction"))
