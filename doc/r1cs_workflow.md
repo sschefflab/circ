@@ -14,11 +14,12 @@ The Spartan backend provides explicit R1CS serialization, allowing you to:
 ### Configure Features
 
 ```bash
-./driver.py -F zok r1cs spartan smt
+./driver.py -F zok r1cs spartan smt zokc
 ```
 
 This enables:
 - `zok` - ZoKrates/Z# frontend
+- `zokc` - ZoKratesCurly / modern ZoKrates frontend
 - `r1cs` - R1CS backend
 - `spartan` - Spartan proof system (uses Curve25519 scalar field)
 - `smt` - SMT backend (required by ZoKrates frontend)
@@ -44,6 +45,7 @@ Compile your ZoKrates program and save the R1CS:
     --prover-key P \
     --verifier-key V
 ```
+**Note: for modern ZoKrates, you need `language --zsharp-curly` before `r1cs`
 
 ### What This Does
 
