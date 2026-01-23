@@ -12,13 +12,15 @@ use super::{ProverData, VerifierData};
 use crate::ir::term::text::parse_value_map;
 use crate::ir::term::Value;
 
-fn serialize_into_file<S: Serialize, P: AsRef<Path>>(data: &S, path: P) -> std::io::Result<()> {
+/// Serialize data into a file
+pub fn serialize_into_file<S: Serialize, P: AsRef<Path>>(data: &S, path: P) -> std::io::Result<()> {
     let mut file = BufWriter::new(File::create(path.as_ref())?);
     serialize_into(&mut file, data).unwrap();
     Ok(())
 }
 
-fn deserialize_from_file<D: for<'a> Deserialize<'a>, P: AsRef<Path>>(
+/// Deserialize data from a file
+pub fn deserialize_from_file<D: for<'a> Deserialize<'a>, P: AsRef<Path>>(
     path: P,
 ) -> std::io::Result<D> {
     Ok(deserialize_from(BufReader::new(File::open(path.as_ref())?)).unwrap())

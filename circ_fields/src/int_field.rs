@@ -72,6 +72,18 @@ impl IntField {
         self.m.clone()
     }
 
+    /// Update the modulus
+    pub fn update_modulus(&mut self, new_modulus: Arc<Integer>) {
+        self.i.rem_floor_assign(&*new_modulus);
+        self.m = new_modulus;
+    }
+
+    /// Update the value
+    pub fn update_val(&mut self, new_val: Integer) {
+        self.i = new_val;
+        self.i.rem_floor_assign(&*self.m);
+    }
+
     /// Invert mod p
     pub fn recip(self) -> Self {
         let r = Self {

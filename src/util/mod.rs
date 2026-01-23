@@ -3,6 +3,7 @@
 pub mod hc;
 pub mod ns;
 pub mod once;
+pub mod timer;
 
 #[cfg(test)]
 mod hash_test {
