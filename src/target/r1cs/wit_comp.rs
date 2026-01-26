@@ -14,7 +14,7 @@ use std::time::Duration;
 /// In each stage:
 /// * it takes a partial assignment
 /// * it returns a vector of field values
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct StagedWitComp {
     vars: HashSet<String>,
     stages: Vec<Stage>,
@@ -28,7 +28,7 @@ pub struct StagedWitComp {
 }
 
 /// Specifies a stage.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stage {
     inputs: HashMap<String, Sort>,
     num_outputs: usize,
@@ -89,6 +89,14 @@ impl StagedWitComp {
     /// Number of step arguments
     pub fn num_step_args(&self) -> usize {
         self.step_args.len()
+    }
+
+    /// Type-check the witness computation (for debugging)
+    #[cfg(debug_assertions)]
+    pub fn type_check(&self) {
+        // Basic sanity check - verify stages and outputs are consistent
+        let total_outputs: usize = self.stages.iter().map(|s| s.num_outputs).sum();
+        assert!(total_outputs <= self.ouput_steps.len() || self.ouput_steps.is_empty());
     }
 }
 

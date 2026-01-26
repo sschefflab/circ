@@ -3,8 +3,10 @@
 /assignment.txt
 /params
 __pycache__
-/P
+/P*
 /V
+/SpartanPP
+/*.pin
 /pi
 /x
 /perf.data*
