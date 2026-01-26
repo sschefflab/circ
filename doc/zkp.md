@@ -16,3 +16,17 @@
 5. Verify the proof against a claimed program output: `./target/release/examples/zk --inputs examples/ZoKrates/pf/maj.zok.vin --action verify`
   * the output is `return` in the input file `examples/ZoKrates/pf/maj.zok.vin`
   * if verification fails, the command will return an error
+
+## Proof Implementations
+
+Use the `--proof-impl` flag to select different proof systems:
+
+* `groth16` (default): Groth16 zkSNARK using bellman/BLS12-381
+* `mirage`: Mirage proof system using bellman/BLS12-381
+* `spartan`: Spartan proof system (requires `spartan` feature)
+* `dorian`: Dorian proof system (requires `spartan` feature)
+
+When using `spartan` or `dorian`, you can also specify the curve with `--pfcurve`:
+* `curve25519` (default)
+* `t256`
+* `t25519`
