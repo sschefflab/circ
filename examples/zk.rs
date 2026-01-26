@@ -14,6 +14,8 @@ use circ::ir::term::text::parse_value_map;
 #[cfg(feature = "spartan")]
 use circ::target::r1cs::spartan;
 
+use circ::create_input;
+
 #[derive(Debug, Parser)]
 #[command(name = "zk", about = "The CirC ZKP runner")]
 struct Options {
@@ -21,6 +23,8 @@ struct Options {
     prover_key: PathBuf,
     #[arg(long, default_value = "V")]
     verifier_key: PathBuf,
+    #[arg(long, default_value = "SpartanPP")]
+    pp: PathBuf,
     #[arg(long, default_value = "pi")]
     proof: PathBuf,
     #[arg(long, default_value = "in")]
@@ -33,24 +37,26 @@ struct Options {
     proof_impl: ProofImpl,
     #[arg(long)]
     action: ProofAction,
+    #[arg(long, default_value = "curve25519")]
+    pfcurve: create_input::PfCurve,
     #[command(flatten)]
     circ: CircOpt,
 }
 
 #[derive(PartialEq, Debug, Clone, ValueEnum)]
-/// `Prove`/`Verify` execute proving/verifying in bellman separately
-/// `Spartan` executes both proving/verifying in spartan
+/// `Prove`/`Verify` execute proving/verifying separately
 enum ProofAction {
     Prove,
     Verify,
-    Spartan,
 }
 
 #[derive(PartialEq, Debug, Clone, ValueEnum)]
-/// Whether to use Groth16 or Mirage
+/// Whether to use Groth16, Mirage, Spartan, or Dorian
 enum ProofImpl {
     Groth16,
     Mirage,
+    Spartan,
+    Dorian,
 }
 
 fn main() {
@@ -90,16 +96,58 @@ fn main() {
         #[cfg(not(feature = "bellman"))]
         (ProofAction::Prove | ProofAction::Verify, _) => panic!("Missing feature: bellman"),
         #[cfg(feature = "spartan")]
-        (ProofAction::Spartan, _) => {
-            let prover_input_map = parse_value_map(&std::fs::read(opts.pin).unwrap());
+        (ProofAction::Prove, ProofImpl::Spartan) => {
+            let prover_input_map = parse_value_map(&std::fs::read(opts.inputs).unwrap());
             println!("Spartan Proving");
-            let (gens, inst, proof) = spartan::prove(opts.prover_key, &prover_input_map).unwrap();
-
-            let verifier_input_map = parse_value_map(&std::fs::read(opts.vin).unwrap());
+            spartan::spartan::prove_fs(
+                opts.prover_key,
+                opts.pp,
+                &prover_input_map,
+                opts.proof,
+                &opts.pfcurve,
+            )
+            .unwrap();
+        }
+        #[cfg(feature = "spartan")]
+        (ProofAction::Verify, ProofImpl::Spartan) => {
+            let verifier_input_map = parse_value_map(&std::fs::read(opts.inputs).unwrap());
             println!("Spartan Verifying");
-            spartan::verify(opts.verifier_key, &verifier_input_map, &gens, &inst, proof).unwrap();
+            spartan::spartan::verify_fs(
+                opts.verifier_key,
+                opts.pp,
+                &verifier_input_map,
+                opts.proof,
+                &opts.pfcurve,
+            )
+            .unwrap();
+        }
+        #[cfg(feature = "spartan")]
+        (ProofAction::Prove, ProofImpl::Dorian) => {
+            let prover_input_map = parse_value_map(&std::fs::read(opts.inputs).unwrap());
+            println!("Dorian Proving (Spartan with verifier randomness)");
+            spartan::spartan_rand::prove_fs(
+                opts.prover_key,
+                opts.pp,
+                &prover_input_map,
+                opts.proof,
+                &opts.pfcurve,
+            )
+            .unwrap();
+        }
+        #[cfg(feature = "spartan")]
+        (ProofAction::Verify, ProofImpl::Dorian) => {
+            let verifier_input_map = parse_value_map(&std::fs::read(opts.inputs).unwrap());
+            println!("Dorian Verifying (Spartan with verifier randomness)");
+            spartan::spartan_rand::verify_fs(
+                opts.verifier_key,
+                opts.pp,
+                &verifier_input_map,
+                opts.proof,
+                &opts.pfcurve,
+            )
+            .unwrap();
         }
         #[cfg(not(feature = "spartan"))]
-        (ProofAction::Spartan, _) => panic!("Missing feature: spartan"),
+        (_, ProofImpl::Spartan | ProofImpl::Dorian) => panic!("Missing feature: spartan"),
     }
 }

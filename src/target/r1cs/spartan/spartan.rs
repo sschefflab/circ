@@ -7,7 +7,8 @@ use crate::target::r1cs::*;
 use super::curve25519::MOD_CURVE25519;
 use super::t256::MOD_T256;
 use super::t25519::MOD_T25519;
-use super::utils::{read_simpl_prover_data, read_verifier_data, PfCurve};
+use super::utils::{read_simpl_prover_data, read_verifier_data};
+use crate::create_input::PfCurve;
 
 use std::time::Instant;
 use crate::util::timer::print_time;

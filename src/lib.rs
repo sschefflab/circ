@@ -17,5 +17,6 @@ pub mod circify;
 pub mod front;
 pub mod target;
 pub mod util;
+pub mod create_input;
 #[cfg(feature = "spartan")]
 pub mod right_field_arithmetic;
