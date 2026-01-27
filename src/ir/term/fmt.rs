@@ -228,7 +228,7 @@ pub struct IrWrapper<'a, T> {
 }
 
 /// Wrap a reference for IR formatting. Uses [IrCfg::from_circ_cfg].
-pub fn wrap<T>(t: &T) -> IrWrapper<T> {
+pub fn wrap<T>(t: &T) -> IrWrapper<'_, T> {
     IrWrapper::new(t, IrCfg::from_circ_cfg())
 }
 

@@ -819,7 +819,7 @@ impl std::hash::Hash for Value {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default)]
 /// The "type" of an IR term
 pub enum Sort {
     /// bit-vectors of this width
@@ -833,6 +833,7 @@ pub enum Sort {
     /// prime field, integers mod FieldT.modulus()
     Field(FieldT),
     /// boolean
+    #[default]
     Bool,
     /// Array from one sort to another, of fixed size.
     ///
@@ -862,12 +863,6 @@ pub struct MapSort {
     pub key: Sort,
     /// value sort
     pub val: Sort,
-}
-
-impl Default for Sort {
-    fn default() -> Self {
-        Self::Bool
-    }
 }
 
 impl Sort {

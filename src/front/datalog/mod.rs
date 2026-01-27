@@ -113,7 +113,7 @@ impl<'ast> Gen<'ast> {
         )
     }
 
-    fn entry_rule(&mut self, name: &'ast str) -> Result<()> {
+    fn entry_rule(&mut self, name: &'ast str) -> Result<'_, ()> {
         let rule = *self
             .rules
             .get(name)
@@ -291,7 +291,7 @@ impl<'ast> Gen<'ast> {
     }
 
     // Begin prim-rec linting
-    fn lint_rules(&mut self) -> Result<()> {
+    fn lint_rules(&mut self) -> Result<'_, ()> {
         let rules: Vec<&'ast ast::Rule_> = self.rules.values().cloned().collect();
         let bug_if = rules.iter().try_fold(term::bool_lit(false), |x, rule| {
             let cond = self.lint_rule(rule)?;

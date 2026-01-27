@@ -125,7 +125,7 @@ impl Debug for TokTree<'_> {
 }
 
 /// Parse a token tree.
-fn parse_tok_tree(bytes: &[u8]) -> TokTree {
+fn parse_tok_tree(bytes: &[u8]) -> TokTree<'_> {
     let mut stack: Vec<Vec<TokTree>> = vec![vec![]];
     let lex = Token::lexer(bytes).spanned();
     for (t, s) in lex {

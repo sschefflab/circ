@@ -12,7 +12,7 @@ use pest::Parser;
 #[grammar = "zokrates.pest"]
 struct ZoKratesParser;
 
-pub fn parse(input: &str) -> Result<Pairs<Rule>, Error<Rule>> {
+pub fn parse(input: &str) -> Result<Pairs<'_, Rule>, Error<Rule>> {
     ZoKratesParser::parse(Rule::file, input)
 }
 

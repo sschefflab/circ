@@ -1194,7 +1194,7 @@ impl fmt::Display for Error {
 }
 
 #[allow(clippy::result_large_err)]
-pub fn generate_ast(input: &str) -> Result<ast::File, Error> {
+pub fn generate_ast(input: &str) -> Result<ast::File<'_>, Error> {
     let parse_tree = parse(input).map_err(Error)?;
     Ok(Prog::from(parse_tree).0)
 }
