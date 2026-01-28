@@ -496,6 +496,26 @@ impl std::ops::SubAssign<&R1csStats> for R1csStats {
 }
 
 impl R1csFinal {
+    /// Get the field modulus
+    pub fn field(&self) -> &FieldT {
+        &self.field
+    }
+
+    /// Get all variables
+    pub fn vars(&self) -> &Vec<Var> {
+        &self.vars
+    }
+
+    /// Get all constraints
+    pub fn constraints(&self) -> &Vec<(Lc, Lc, Lc)> {
+        &self.constraints
+    }
+
+    /// Get variable names
+    pub fn names(&self) -> &HashMap<Var, String> {
+        &self.names
+    }
+
     /// Check `a * b = c` in this constraint system.
     pub fn check(&self, a: &Lc, b: &Lc, c: &Lc, values: &HashMap<Var, FieldV>) {
         let av = self.eval(a, values);
@@ -702,6 +722,16 @@ pub struct Lc {
 }
 
 impl Lc {
+    /// Get the constant term
+    pub fn constant(&self) -> &FieldV {
+        &self.constant
+    }
+
+    /// Get the monomials (variable -> coefficient mapping)
+    pub fn monomials(&self) -> &HashMap<Var, FieldV> {
+        &self.monomials
+    }
+
     /// Is this the zero combination?
     pub fn is_zero(&self) -> bool {
         self.monomials.is_empty() && self.constant.is_zero()
