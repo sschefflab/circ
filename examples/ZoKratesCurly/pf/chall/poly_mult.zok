@@ -1,3 +1,5 @@
+from "EMBED" import sample_challenge;
+
 def main(private field[4] f, private field[4] g, private field[7] h) -> field {
     field x = sample_challenge([...f, ...g, ...h]);
     field[7] xpows = [1; 7];
