@@ -20,6 +20,7 @@
 //!    * [Computation]: a collection of variables and assertions about them
 //!    * [Value]: a variable-free (and evaluated) term
 //!
+#![allow(clippy::derive_ord_xor_partial_ord)]
 
 use circ_fields::{FieldT, FieldV};
 pub use circ_hc::{Node, Table, Weak};
@@ -131,9 +132,12 @@ pub enum Op {
     /// A random value, sampled uniformly and independently of its arguments.
     ///
     /// Takes a name (if deterministically sampled, challenges of different names are sampled
-    /// differentely) and a field to sample from.
+    /// differently) and a field to sample from.
     ///
     /// In IR evaluation, we sample deterministically based on a hash of the name.
+    ///
+    /// In an multi-round SNARK context, we set this based on hashing commitments
+    /// to the witnesses for previous rounds.
     PfChallenge(Box<ChallengeOp>),
     /// Requires the input pf element to fit in this many (unsigned) bits.
     PfFitsInBits(usize),
@@ -792,7 +796,6 @@ impl Array {
 impl std::cmp::Eq for Value {}
 // We walk in danger here, intentionally. One day we may fix it.
 // FP is the heart of the problem.
-#[allow(clippy::derive_ord_xor_partial_ord)]
 impl std::cmp::Ord for Value {
     fn cmp(&self, o: &Self) -> std::cmp::Ordering {
         self.partial_cmp(o).expect("broken Value cmp")
