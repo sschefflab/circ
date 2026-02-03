@@ -38,7 +38,7 @@ use circ::target::aby::trans::to_aby;
 #[cfg(feature = "lp")]
 use circ::target::ilp::{assignment_to_values, trans::to_ilp};
 #[cfg(feature = "spartan")]
-use circ::target::r1cs::spartan::write_data;
+use circ::target::r1cs::spartan::utils::{write_data_spartan, write_data_spartan_rand};
 #[cfg(feature = "bellman")]
 use circ::target::r1cs::{
     bellman::Bellman,
@@ -99,6 +99,8 @@ enum Backend {
         prover_key: PathBuf,
         #[arg(long, default_value = "V")]
         verifier_key: PathBuf,
+        #[arg(long, default_value = "SpartanPP")]
+        pp: PathBuf,
         #[arg(long, default_value = "50")]
         /// linear combination constraints up to this size will be eliminated
         lc_elimination_thresh: usize,
@@ -106,6 +108,8 @@ enum Backend {
         action: ProofAction,
         #[arg(long, default_value = "groth16")]
         proof_impl: ProofImpl,
+        #[arg(long, default_value = "curve25519")]
+        pfcurve: PfCurve,
     },
     Smt {},
     Ilp {},
@@ -147,13 +151,21 @@ enum ProofAction {
     Count,
     Setup,
     CpSetup,
-    SpartanSetup,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, ValueEnum)]
 enum ProofImpl {
     Groth16,
     Mirage,
+    Spartan,
+    Dorian,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, ValueEnum)]
+enum PfCurve {
+    T256,
+    Curve25519,
+    T25519,
 }
 
 fn determine_language(l: &Language, input_path: &Path) -> DeterminedLanguage {
@@ -188,7 +200,33 @@ fn main() {
         .format_level(false)
         .format_timestamp(None)
         .init();
-    let options = Options::parse();
+    let options = {
+        let mut cur_options = Options::parse();
+        match cur_options.backend {
+            Backend::R1cs {
+                proof_impl: ProofImpl::Spartan,
+                ref pfcurve,
+                ..
+            }
+            | Backend::R1cs {
+                proof_impl: ProofImpl::Dorian,
+                ref pfcurve,
+                ..
+            } => match pfcurve {
+                PfCurve::Curve25519 => {
+                    cur_options.circ.field.custom_modulus = "7237005577332262213973186563042994240857116359379907606001950938285454250989".to_string();
+                }
+                PfCurve::T256 => {
+                    cur_options.circ.field.custom_modulus = "115792089210356248762697446949407573530086143415290314195533631308867097853951".to_string();
+                }
+                PfCurve::T25519 => {
+                    cur_options.circ.field.custom_modulus = "57896044618658097711785492504343953926634992332820282019728792003956564819949".to_string();
+                }
+            },
+            _ => {}
+        }
+        cur_options
+    };
     circ::cfg::set(&options.circ);
     let path_buf = options.path.clone();
     let mode = match options.backend {
@@ -322,6 +360,7 @@ fn main() {
             action,
             prover_key,
             verifier_key,
+            pp,
             proof_impl,
             ..
         } => {
@@ -359,10 +398,10 @@ fn main() {
 
             match action {
                 ProofAction::Count => (),
-                #[cfg(feature = "bellman")]
                 ProofAction::Setup => {
                     println!("Running Setup");
                     match proof_impl {
+                        #[cfg(feature = "bellman")]
                         ProofImpl::Groth16 => Bellman::<Bls12>::setup_fs(
                             prover_data,
                             verifier_data,
@@ -370,6 +409,7 @@ fn main() {
                             verifier_key,
                         )
                         .unwrap(),
+                        #[cfg(feature = "bellman")]
                         ProofImpl::Mirage => Mirage::<Bls12>::setup_fs(
                             prover_data,
                             verifier_data,
@@ -377,10 +417,30 @@ fn main() {
                             verifier_key,
                         )
                         .unwrap(),
+                        #[cfg(feature = "spartan")]
+                        ProofImpl::Spartan => write_data_spartan::<_, _>(
+                            prover_key,
+                            verifier_key,
+                            pp,
+                            &prover_data,
+                            &verifier_data,
+                        )
+                        .unwrap(),
+                        #[cfg(feature = "spartan")]
+                        ProofImpl::Dorian => write_data_spartan_rand::<_, _>(
+                            prover_key,
+                            verifier_key,
+                            pp,
+                            &prover_data,
+                            &verifier_data,
+                        )
+                        .unwrap(),
+                        #[cfg(not(feature = "spartan"))]
+                        ProofImpl::Spartan | ProofImpl::Dorian => panic!("Missing feature: spartan"),
+                        #[cfg(not(feature = "bellman"))]
+                        ProofImpl::Groth16 | ProofImpl::Mirage => panic!("Missing feature: bellman"),
                     };
                 }
-                #[cfg(not(feature = "bellman"))]
-                ProofAction::Setup => panic!("Missing feature: bellman"),
                 #[cfg(feature = "bellman")]
                 ProofAction::CpSetup => {
                     println!("Running CpSetup");
@@ -393,17 +453,11 @@ fn main() {
                             verifier_key,
                         )
                         .unwrap(),
+                        ProofImpl::Spartan | ProofImpl::Dorian => panic!("Spartan/Dorian is not CP"),
                     };
                 }
                 #[cfg(not(feature = "bellman"))]
                 ProofAction::CpSetup => panic!("Missing feature: bellman"),
-                #[cfg(feature = "spartan")]
-                ProofAction::SpartanSetup => {
-                    write_data::<_, _>(prover_key, verifier_key, &prover_data, &verifier_data)
-                        .unwrap();
-                }
-                #[cfg(not(feature = "spartan"))]
-                ProofAction::SpartanSetup => panic!("Missing feature: spartan"),
             }
         }
         #[cfg(not(feature = "r1cs"))]

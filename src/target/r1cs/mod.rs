@@ -643,6 +643,206 @@ impl ProverData {
     }
 }
 
+#[cfg(feature = "spartan")]
+impl ProverDataSpartan {
+    /// Convert ProverData to ProverDataSpartan
+    pub fn from_prover_data(prover_data: &ProverData) -> Self {
+        let total_var_len = prover_data.r1cs.vars.len();
+        let mut pubinp_len = 0;
+        for var in prover_data.r1cs.vars.iter() {
+            if matches!(var.ty(), VarType::Inst) {
+                pubinp_len += 1;
+            }
+        }
+        ProverDataSpartan {
+            pubinp_len,
+            wit_len: total_var_len - pubinp_len,
+            precompute: prover_data.precompute.clone(),
+        }
+    }
+    /// Compute an R1CS witness ~(setting any challenges to 1s)~
+    pub fn extend_r1cs_witness(&self, values: &HashMap<String, Value>) -> Vec<FieldV> {
+        // we need to evaluate all R1CS variables
+        // let mut var_values: HashMap<Var, FieldV> = Default::default();
+        let mut var_values: Vec<FieldV> = Vec::new();
+        let mut eval = wit_comp::StagedWitCompEvaluator::new(&self.precompute);
+        // this will hold inputs to the multi-round evaluator.
+        let mut inputs = values.clone();
+        let var_len = self.pubinp_len + self.wit_len;
+        while var_values.len() < var_len {
+            trace!(
+                "Have {}/{} values, doing another round",
+                var_values.len(),
+                var_len
+            );
+            // do a round of evaluation
+            let value_vec = eval.eval_stage(std::mem::take(&mut inputs));
+            for value in value_vec {
+                var_values.push(value.as_pf().clone());
+            }
+        }
+        var_values
+    }
+}
+
+#[cfg(feature = "spartan")]
+impl ProverDataSpartanRand {
+    /// Convert ProverData to ProverDataSpartan
+    pub fn from_prover_data(prover_data: &ProverData) -> Self {
+        const N_ROUNDS: usize = 2;
+        let mut pubinp_len: [usize; N_ROUNDS] = [0, 0];
+        let mut wit_len: [usize; N_ROUNDS] = [0, 0];
+        for var in prover_data.r1cs.vars.iter() {
+            if matches!(var.ty(), VarType::Inst) {
+                pubinp_len[0] += 1;
+            } else if matches!(var.ty(), VarType::Chall) {
+                pubinp_len[1] += 1;
+            } else if matches!(var.ty(), VarType::RoundWit) {
+                wit_len[0] += 1;
+            } else if matches!(var.ty(), VarType::FinalWit) {
+                wit_len[1] += 1;
+            } else {
+                panic!("unexpected variable type");
+            }
+        }
+        let pubinp_len = if pubinp_len[1] == 0 {
+            vec![pubinp_len[0]]
+        } else {
+            pubinp_len.to_vec()
+        };
+        let wit_len = if wit_len[0] == 0 {
+            vec![wit_len[1]]
+        } else {
+            wit_len.to_vec()
+        };
+        assert_eq!(pubinp_len.len(), wit_len.len());
+        // println!("pubinp_len: {:?}", pubinp_len);
+
+        assert_eq!(
+            prover_data.r1cs.vars.len(),
+            pubinp_len.iter().sum::<usize>() + wit_len.iter().sum::<usize>()
+        );
+        Self {
+            r1cs: prover_data.r1cs.clone(),
+            pubinp_len: pubinp_len.to_vec(),
+            wit_len: wit_len.to_vec(),
+            precompute: prover_data.precompute.clone(),
+        }
+    }
+    /// Compute an R1CS witness ~(setting any challenges to 1s)~; TO DO: support verifier randomness
+    pub fn extend_r1cs_witness(&self, values: &HashMap<String, Value>) -> Vec<FieldV> {
+        // we need to evaluate all R1CS variables
+        let mut var_values: Vec<FieldV> = Vec::new();
+        #[cfg(debug_assertions)]
+        self.precompute.type_check();
+        let mut eval = wit_comp::StagedWitCompEvaluator::new(&self.precompute);
+        // this will hold inputs to the multi-round evaluator.
+        let mut inputs = values.clone();
+        while var_values.len() < self.r1cs.vars.len() {
+            trace!(
+                "Have {}/{} values, doing another round",
+                var_values.len(),
+                self.r1cs.vars.len()
+            );
+            // do a round of evaluation
+            let value_vec = eval.eval_stage(std::mem::take(&mut inputs));
+            for value in value_vec {
+                trace!(
+                    "var {} : {}",
+                    self.r1cs
+                        .names
+                        .get(&self.r1cs.vars[var_values.len()])
+                        .unwrap(),
+                    value.as_pf()
+                );
+                var_values.push(value.as_pf().clone());
+            }
+            // fill the challenges with 1s
+            if var_values.len() < self.r1cs.vars.len() {
+                for next_var_i in var_values.len()..self.r1cs.vars.len() {
+                    if !matches!(self.r1cs.vars[next_var_i].ty(), VarType::Chall) {
+                        break;
+                    }
+                    let var = self.r1cs.vars[next_var_i];
+                    let name = self.r1cs.names.get(&var).unwrap().clone();
+                    let val = eval_pf_challenge(&name, &self.r1cs.field);
+                    var_values.push(val.clone());
+                    inputs.insert(name, Value::Field(val));
+                }
+            }
+        }
+        var_values
+    }
+
+    /// Check all assertions. Puts in 1 for challenges.
+    pub fn check_all(&self, values: &HashMap<String, Value>) {
+        self.r1cs.check_all(
+            &self
+                .r1cs
+                .vars
+                .iter()
+                .cloned()
+                .zip(self.extend_r1cs_witness(values))
+                .collect(),
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    /// Check all assertions. Puts in 1 for challenges.
+    pub fn check_all_witness(
+        &self,
+        inp: &Vec<FieldV>,
+        wit0: &Vec<FieldV>,
+        wit1: &Vec<FieldV>,
+        verifier_rand: &Vec<FieldV>,
+    ) {
+        let mut z = inp.clone();
+        z.extend(wit0.clone());
+        z.extend(verifier_rand.clone());
+        z.extend(wit1.clone());
+        self.r1cs
+            .check_all(&self.r1cs.vars.iter().cloned().zip(z).collect());
+    }
+    /// Compute the IR1CS witness in the second round
+    pub fn create_wit1(
+        &self,
+        values: &HashMap<String, Value>,
+        verifier_rand: &Vec<FieldV>,
+    ) -> Vec<FieldV> {
+        // we need to evaluate all R1CS variables
+        #[cfg(debug_assertions)]
+        self.precompute.type_check();
+        let mut eval = wit_comp::StagedWitCompEvaluator::new(&self.precompute);
+        // this will hold inputs to the multi-round evaluator.
+        let mut inputs = values.clone();
+        let mut chall_idx = 0;
+        let mut return_values = Vec::new();
+        let mut idx = 0;
+        while idx < self.r1cs.vars.len() {
+            // do a round of evaluation
+            let value_vec = eval.eval_stage(std::mem::take(&mut inputs));
+            return_values = value_vec.iter().map(|v| v.as_pf().clone()).collect();
+
+            idx += value_vec.len();
+            // fill the challenges with 1s
+            if idx < self.r1cs.vars.len() {
+                for next_var_i in idx..self.r1cs.vars.len() {
+                    if !matches!(self.r1cs.vars[next_var_i].ty(), VarType::Chall) {
+                        break;
+                    }
+                    let var = self.r1cs.vars[next_var_i];
+                    let name = self.r1cs.names.get(&var).unwrap().clone();
+                    let val = verifier_rand[chall_idx].clone();
+                    inputs.insert(name, Value::Field(val.clone()));
+                    chall_idx += 1;
+                    idx += 1;
+                }
+            }
+        }
+        return_values
+    }
+}
+
 /// A bidirectional map.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BiMap<S: Hash + Eq + Clone, T: Hash + Eq + Clone> {
@@ -1178,6 +1378,32 @@ impl VerifierData {
 pub struct ProverData {
     /// R1cs
     pub r1cs: R1csFinal,
+    /// Witness computation
+    pub precompute: wit_comp::StagedWitComp,
+}
+
+#[cfg(feature = "spartan")]
+/// (Simplified) Relation-related data that a prover needs to make a proof.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProverDataSpartan {
+    /// Public input length
+    pub pubinp_len: usize,
+    /// Witness length
+    pub wit_len: usize,
+    /// Witness computation
+    pub precompute: wit_comp::StagedWitComp,
+}
+
+#[cfg(feature = "spartan")]
+/// Relation-related data that a prover needs to make a proof.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProverDataSpartanRand {
+    /// Public input length + Verifier randomness length
+    pub pubinp_len: Vec<usize>,
+    /// Witness length
+    pub wit_len: Vec<usize>,
+    /// R1cs
+    pub r1cs: R1csFinal, // added to compute witness
     /// Witness computation
     pub precompute: wit_comp::StagedWitComp,
 }

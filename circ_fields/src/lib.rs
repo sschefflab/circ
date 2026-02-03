@@ -1,11 +1,13 @@
 //! Fields for use in CirC
 
 #![warn(missing_docs)]
-#![deny(warnings)]
+// #![deny(warnings)]
+#![allow(non_local_definitions)]
 
 mod ff_field;
 mod int_field;
 pub mod size;
+pub mod t256;
 
 /// Exports for moduli defined in this crate, as ARCs
 pub mod moduli {
@@ -501,6 +503,32 @@ impl FieldV {
             Err(FullFieldV::FBls12381(_)) => &F_BLS12381_FMOD,
             Err(FullFieldV::FBn254(_)) => &F_BN254_FMOD,
             Err(FullFieldV::IntField(i)) => i.modulus(),
+        }
+    }
+
+    /// Update the modulus of this field element (only works for IntField)
+    pub fn update_modulus(&mut self, new_modulus: Arc<Integer>) {
+        let full_element: &mut FullFieldV = self.full_mut();
+        match full_element {
+            FullFieldV::IntField(ref mut i) => {
+                i.update_modulus(new_modulus);
+            }
+            _ => {
+                panic!("update_modulus only applicable to IntField elements");
+            }
+        }
+    }
+
+    /// Update the value of this field element (only works for IntField)
+    pub fn update_val(&mut self, new_val: Integer) {
+        let full_element: &mut FullFieldV = self.full_mut();
+        match full_element {
+            FullFieldV::IntField(ref mut i) => {
+                i.update_val(new_val);
+            }
+            _ => {
+                panic!("update_val only applicable to IntField elements");
+            }
         }
     }
 
