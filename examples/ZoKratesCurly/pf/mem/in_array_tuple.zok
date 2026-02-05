@@ -1,0 +1,13 @@
+from "EMBED" import value_in_array_tuple;
+
+// Test value_in_array_tuple with a 2D array of field elements
+// Looking for tuple [1, 2, 3] in the array [[1,2,3], [4,5,6], [7,8,9]]
+
+def main(private field[3] needle) -> bool {
+    field[3][3] haystack = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+
+    // This should succeed when needle == [1,2,3], [4,5,6], or [7,8,9]
+    assert(value_in_array_tuple(needle, haystack));
+
+    return true;
+}

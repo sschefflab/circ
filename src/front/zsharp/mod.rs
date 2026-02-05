@@ -529,6 +529,28 @@ impl<'ast> ZGen<'ast> {
                     Ok(T::new(Ty::Bool, contains))
                 }
             }
+            "value_in_array_tuple" => {
+                if args.len() != 2 {
+                    Err(format!(
+                        "Got {} args to EMBED/value_in_array_tuple, expected 2",
+                        args.len()
+                    ))
+                } else if generics.len() != 2 {
+                    Err(format!(
+                        "Got {} generic args to EMBED/value_in_array_tuple, expected 2",
+                        generics.len()
+                    ))
+                } else {
+                    // Same logic as value_in_array - the IR operations work with arrays,
+                    // and set.rs handles the lowering by hashing array elements to field elements
+                    let array = args.pop().unwrap();
+                    let value = args.pop().unwrap();
+                    let map = term![Op::ExtOp(ExtOp::ArrayToMap); array.term];
+                    let flip = term![Op::ExtOp(ExtOp::MapFlip); map];
+                    let contains = term![Op::ExtOp(ExtOp::MapContainsKey); flip, value.term];
+                    Ok(T::new(Ty::Bool, contains))
+                }
+            }
             "reverse_lookup" => {
                 if args.len() != 2 {
                     Err(format!(
