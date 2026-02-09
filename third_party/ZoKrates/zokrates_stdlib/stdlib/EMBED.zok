@@ -98,6 +98,10 @@ def reverse_lookup<N>(field[N] x, field y) -> field:
 def value_in_array<N>(field y, field[N] x) -> bool:
     return true
 
+// check that x contains a tuple equal to y; the result is only assertable.
+def value_in_array_tuple<N, M>(field[M] y, field[N][M] x) -> bool:
+    return true
+
 // find inverse of a mod b
 def int_modinv(integer a, integer b) -> integer:
     return 0int

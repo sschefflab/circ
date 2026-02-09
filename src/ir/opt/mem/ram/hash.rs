@@ -1,6 +1,6 @@
 //! Keyed hashes
 
-use crate::ir::term::{pf_lit, term, Op, Term, PF_ADD, PF_MUL};
+use crate::ir::term::{Op, PF_ADD, PF_MUL, Term, pf_lit, term};
 use circ_fields::FieldT;
 
 /// A multi-set hasher.
@@ -45,6 +45,7 @@ impl UniversalHasher {
     pub fn new(key_name: String, f: &FieldT, inputs: Vec<Term>, len: usize) -> Self {
         let key = term(Op::new_chall(key_name, f.clone()), inputs);
         let key_powers: Vec<Term> = std::iter::successors(Some(key.clone()), |p| {
+            // TODO: The key should be public, so this powers check should be able to happen outside of the circuit.
             Some(term![PF_MUL; p.clone(), key.clone()])
         })
         .take(len - 1)

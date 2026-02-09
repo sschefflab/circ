@@ -1,0 +1,11 @@
+from "EMBED" import value_in_array_tuple;
+
+const u32 K = 3;
+
+// Test value_in_array_tuple with a 2D array of field elements
+
+def main(private field[K] needle) {
+    field[4][K] haystack = [[0; K], [1; K], [2; K], [3; K]];
+
+    assert(value_in_array_tuple(needle, haystack));
+}
