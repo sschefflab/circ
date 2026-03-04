@@ -1,12 +1,11 @@
 //! Export circ R1cs to Spartan
 use crate::target::r1cs::*;
-use circ_fields::t256::ScalarField as Scalar; //Config,
+ //Config,
 
 use crate::util::timer::print_time;
 use libdoriant256::scalar::Scalar as OriScalar;
-use libdoriant256::DensePolynomial;
 use libdoriant256::{
-    Assignment, InputsAssignment, Instance, NIZKRand, NIZKRandGens, NIZKRandInter, VarsAssignment,
+    Assignment, InputsAssignment, Instance, NIZKRand, NIZKRandGens, NIZKRandInter,
 };
 use merlin::Transcript;
 use rug::Integer;
@@ -16,9 +15,8 @@ use std::time::Instant;
 use std::path::Path;
 use crate::target::r1cs::proof::deserialize_from_file;
 
-use super::t256::{NUM_MODULUS_BYTE, int_to_scalar, lc_to_v};
+use super::t256::{int_to_scalar, lc_to_v};
 use crate::target::r1cs::wit_comp::StagedWitComp;
-use ark_serialize::CanonicalDeserialize;
 
 #[cfg(feature = "spartan")]
 use circ_fields::t256::utils::helper::SpartanTrait;

@@ -3,9 +3,8 @@ use crate::target::r1cs::*;
 use crate::util::timer::print_time;
 use circ_fields::t256::utils::helper::SpartanTrait;
 use libdoriant25519::scalar::Scalar as OriScalar;
-use libdoriant25519::DensePolynomial;
 use libdoriant25519::{
-    Assignment, InputsAssignment, Instance, NIZKRand, NIZKRandGens, NIZKRandInter, VarsAssignment,
+    Assignment, InputsAssignment, Instance, NIZKRand, NIZKRandGens, NIZKRandInter,
 };
 use merlin::Transcript;
 use rug::Integer;
@@ -15,9 +14,8 @@ use std::time::Instant;
 use std::path::Path;
 use crate::target::r1cs::proof::deserialize_from_file;
 
-use super::t25519::{NUM_MODULUS_BYTE, int_to_scalar, lc_to_v};
+use super::t25519::{int_to_scalar, lc_to_v};
 use crate::target::r1cs::wit_comp::StagedWitComp;
-use ark_serialize::CanonicalDeserialize;
 
 use super::spartan_rand::{
     precompute_inner, 

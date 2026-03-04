@@ -3,10 +3,9 @@ use crate::target::r1cs::*;
 
 use crate::util::timer::print_time;
 use libdorian::scalar::Scalar as OriScalar;
-use libdorian::DensePolynomial;
 use libdorian::{
     Assignment, InputsAssignment, Instance, 
-    NIZKRand, NIZKRandGens, NIZKRandInter, VarsAssignment,
+    NIZKRand, NIZKRandGens, NIZKRandInter,
 };
 use merlin::Transcript;
 use rug::Integer;
@@ -20,10 +19,7 @@ use super::spartan_rand::{
 };
 use super::curve25519::{int_to_scalar, lc_to_v};
 
-#[cfg(feature = "multicore")]
-use rayon::prelude::*;
 
-use ark_serialize::CanonicalDeserialize;
 use crate::target::r1cs::proof::deserialize_from_file;
 use std::path::Path;
 

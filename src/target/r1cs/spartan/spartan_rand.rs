@@ -7,11 +7,9 @@ use crate::target::r1cs::*;
 use super::curve25519::MOD_CURVE25519;
 use super::t25519::MOD_T25519;
 use super::t256::MOD_T256;
-use super::utils::{read_verifier_data, Variable};
+use super::utils::Variable;
 use crate::create_input::PfCurve;
 
-use std::time::Instant;
-use crate::util::timer::print_time;
 use serde::{Deserialize, Serialize};
 
 use crate::target::r1cs::proof::{serialize_into_file, deserialize_from_file};
