@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "multicore")]
 use rayon::prelude::*;
 
-use crate::Timer;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SumcheckInstanceProof {
   compressed_polys: Vec<CompressedUniPoly>,
