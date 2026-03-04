@@ -24,6 +24,7 @@ lazy_static! {
 /// Number of bytes of the modulus
 pub const NUM_MODULUS_BYTE: usize = 32;
 
+/// Spartan proof system over T25519
 pub struct SpartanT25519;
 
 impl SpartanProofSystem for SpartanT25519 {

@@ -25,6 +25,7 @@ lazy_static! {
 /// Number of bytes of the modulus
 pub const NUM_MODULUS_BYTE: usize = ((Scalar::MODULUS_BIT_SIZE + 7) / 8) as usize;
 
+/// Spartan proof system over T256
 pub struct SpartanT256;
 
 impl SpartanProofSystem for SpartanT256 {
@@ -215,7 +216,7 @@ pub fn r1cs_to_spartan_simpl(
     )
 }
 
-// Convert Integer to Scalar
+/// Convert Integer to Scalar
 pub fn int_to_scalar(i: &Integer) -> Scalar {
     let digits: Vec<u8> = i.to_digits(rug::integer::Order::LsfLe);
     let mut repr: [u8; NUM_MODULUS_BYTE] = [0; NUM_MODULUS_BYTE];
@@ -225,7 +226,7 @@ pub fn int_to_scalar(i: &Integer) -> Scalar {
 //     Scalar::from_be_bytes_mod_order(&repr)
     Scalar::deserialize_compressed(&repr[..]).unwrap()
 }
-// circ Lc (const, monomials <Integer>) -> Vec<Variable>
+/// Convert a circ Lc (const, monomials over Integer) to a Vec of Spartan Variables
 pub fn lc_to_v(lc: &Lc, const_id: usize, trans: &HashMap<Var, usize>) -> Vec<Variable> {
     let mut v: Vec<Variable> = Vec::new();
 

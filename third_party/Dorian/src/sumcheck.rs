@@ -588,6 +588,7 @@ impl ZKSumcheckInstanceProof {
     )
   }
 
+  #[allow(dead_code)]
   fn bound_four_polynomial (
     poly_A: &mut DensePolynomial,
     poly_B: &mut DensePolynomial,
@@ -602,6 +603,7 @@ impl ZKSumcheckInstanceProof {
   }
 
   #[cfg(feature = "multicore")]
+  #[allow(dead_code)]
   fn bound_four_polynomial_parallel(
       poly_A: &mut DensePolynomial,
       poly_B: &mut DensePolynomial,
@@ -822,6 +824,7 @@ impl ZKSumcheckInstanceProof {
     )
   }
 
+  #[allow(dead_code)]
   fn bound_five_polynomial(
     poly_A: &mut DensePolynomial,
     poly_B0: &mut DensePolynomial,

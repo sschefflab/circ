@@ -384,7 +384,7 @@ impl PolyEvalProof {
     let LZ = poly.bound(&L);
 
     let LZ_blind: Scalar = (0..L.len()).map(|i| blinds.blinds[i] * L[i]).sum(); // 26.039µs
-    let timer_poly_eval2 = Timer::new("prove_poly_eval_inner2");
+    let _timer_poly_eval2 = Timer::new("prove_poly_eval_inner2");
 
     // a dot product proof of size R_size
     let (proof, _C_LR, C_Zr_prime) = DotProductProofLog::prove(

@@ -26,6 +26,7 @@ use super::spartan_rand::{
     ISpartanProofSystem, 
 };
 
+/// Spartan proof system using the 2-round (verifier randomness) protocol over T256
 pub struct SpartanRandT256;
 
 impl ISpartanProofSystem for SpartanRandT256 {
@@ -66,7 +67,7 @@ impl ISpartanProofSystem for SpartanRandT256 {
         vk: &Self::VerifierKey,
         proof: &Self::Proof,
         inputs_map: &HashMap<String, Value>,
-        print_msg: bool,
+        _print_msg: bool,
     ) -> io::Result<()> {
         let values = vk.eval(inputs_map);
         verify(&values, &pp.0, &pp.1, proof)
@@ -184,6 +185,7 @@ pub struct R1csToSpartan2Round<'a> {
 }
 
 impl<'a> R1csToSpartan2Round<'a> {
+    /// Parse prover data into components needed for proving
     pub fn parse_prover_data(prover_data: &ProverDataSpartanRand)
     -> ([usize; 2],
         [usize; 2],

@@ -27,12 +27,14 @@ pub trait SpartanProofSystem {
     /// A proof
     type Proof: Serialize + for<'a> Deserialize<'a>;
 
+    /// Generate a proof
     fn prove(
         pp: &Self::SetupParameter,
         pk: &Self::ProverKey,
         input_map: &HashMap<String, Value>,
     ) -> io::Result<Self::Proof>;
 
+    /// Verify a proof
     fn verify(
         pp: &Self::SetupParameter,
         vk: &Self::VerifierKey,
