@@ -236,6 +236,13 @@ pub struct ProvingKey<E: Engine>(
     #[serde(with = "serde_pk")] groth16::Parameters<E>,
 );
 
+impl<E: Engine> ProvingKey<E> {
+    /// Access the embedded [ProverData].
+    pub fn prover_data(&self) -> &ProverData {
+        &self.0
+    }
+}
+
 /// The vk for [Bellman]
 #[derive(Serialize, Deserialize)]
 pub struct VerifyingKey<E: Engine>(
