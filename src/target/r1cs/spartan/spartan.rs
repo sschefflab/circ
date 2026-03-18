@@ -7,11 +7,8 @@ use crate::target::r1cs::*;
 use super::curve25519::MOD_CURVE25519;
 use super::t256::MOD_T256;
 use super::t25519::MOD_T25519;
-use super::utils::{read_simpl_prover_data, read_verifier_data};
 use crate::create_input::PfCurve;
 
-use std::time::Instant;
-use crate::util::timer::print_time;
 use serde::{Deserialize, Serialize};
 
 use crate::target::r1cs::proof::{serialize_into_file, deserialize_from_file};
@@ -30,12 +27,14 @@ pub trait SpartanProofSystem {
     /// A proof
     type Proof: Serialize + for<'a> Deserialize<'a>;
 
+    /// Generate a proof
     fn prove(
         pp: &Self::SetupParameter,
         pk: &Self::ProverKey,
         input_map: &HashMap<String, Value>,
     ) -> io::Result<Self::Proof>;
 
+    /// Verify a proof
     fn verify(
         pp: &Self::SetupParameter,
         vk: &Self::VerifierKey,

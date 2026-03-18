@@ -1,4 +1,5 @@
 pub trait Math {
+  #[allow(dead_code)]
   fn square_root(self) -> usize;
   fn pow2(self) -> usize;
   fn get_bits(self, num_bits: usize) -> Vec<bool>;

@@ -1,11 +1,9 @@
 //! Export circ R1cs to Spartan
 use crate::target::r1cs::*;
 use crate::util::timer::print_time;
-use circ_fields::t256::utils::helper::SpartanTrait;
 use libdoriant25519::scalar::Scalar as OriScalar;
-use libdoriant25519::DensePolynomial;
 use libdoriant25519::{
-    Assignment, InputsAssignment, Instance, NIZKRand, NIZKRandGens, NIZKRandInter, VarsAssignment,
+    Assignment, InputsAssignment, Instance, NIZKRand, NIZKRandGens, NIZKRandInter,
 };
 use merlin::Transcript;
 use rug::Integer;
@@ -15,15 +13,15 @@ use std::time::Instant;
 use std::path::Path;
 use crate::target::r1cs::proof::deserialize_from_file;
 
-use super::t25519::{NUM_MODULUS_BYTE, int_to_scalar, lc_to_v};
+use super::t25519::{int_to_scalar, lc_to_v};
 use crate::target::r1cs::wit_comp::StagedWitComp;
-use ark_serialize::CanonicalDeserialize;
 
 use super::spartan_rand::{
     precompute_inner, 
     ISpartanProofSystem, 
 };
 
+/// Spartan proof system with verifier randomness over T25519
 pub struct SpartanRandT25519;
 
 impl ISpartanProofSystem for SpartanRandT25519 {
@@ -64,7 +62,7 @@ impl ISpartanProofSystem for SpartanRandT25519 {
         vk: &Self::VerifierKey,
         proof: &Self::Proof,
         inputs_map: &HashMap<String, Value>,
-        print_msg: bool,
+        _print_msg: bool,
     ) -> io::Result<()> {
         let values = vk.eval(inputs_map);
         verify(&values, &pp.0, &pp.1, proof)
@@ -184,6 +182,7 @@ pub struct R1csToSpartan2Round<'a> {
 }
 
 impl<'a> R1csToSpartan2Round<'a> {
+    /// Parse prover data into components needed for proving
     pub fn parse_prover_data(prover_data: &ProverDataSpartanRand)
     -> ([usize; 2],
         [usize; 2],

@@ -3,10 +3,9 @@ use crate::target::r1cs::*;
 
 use crate::util::timer::print_time;
 use libdorian::scalar::Scalar as OriScalar;
-use libdorian::DensePolynomial;
 use libdorian::{
     Assignment, InputsAssignment, Instance, 
-    NIZKRand, NIZKRandGens, NIZKRandInter, VarsAssignment,
+    NIZKRand, NIZKRandGens, NIZKRandInter,
 };
 use merlin::Transcript;
 use rug::Integer;
@@ -20,14 +19,12 @@ use super::spartan_rand::{
 };
 use super::curve25519::{int_to_scalar, lc_to_v};
 
-#[cfg(feature = "multicore")]
-use rayon::prelude::*;
 
-use ark_serialize::CanonicalDeserialize;
 use crate::target::r1cs::proof::deserialize_from_file;
 use std::path::Path;
 
 
+/// Spartan proof system using the 2-round (verifier randomness) protocol over Curve25519
 pub struct SpartanRandCurve25519;
 
 impl ISpartanProofSystem for SpartanRandCurve25519 {
@@ -68,7 +65,7 @@ impl ISpartanProofSystem for SpartanRandCurve25519 {
         vk: &Self::VerifierKey,
         proof: &Self::Proof,
         inputs_map: &HashMap<String, Value>,
-        print_msg: bool,
+        _print_msg: bool,
     ) -> io::Result<()> {
         let values = vk.eval(inputs_map);
         verify(&values, &pp.0, &pp.1, proof)
@@ -189,6 +186,7 @@ pub struct R1csToSpartan2Round<'a> {
 
 impl<'a> R1csToSpartan2Round<'a> {
 
+    /// Parse prover data into components needed for proving
     pub fn parse_prover_data(prover_data: &ProverDataSpartanRand)
     -> ([usize; 2],
         [usize; 2],

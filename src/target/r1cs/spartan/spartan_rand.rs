@@ -7,11 +7,9 @@ use crate::target::r1cs::*;
 use super::curve25519::MOD_CURVE25519;
 use super::t25519::MOD_T25519;
 use super::t256::MOD_T256;
-use super::utils::{read_verifier_data, Variable};
+use super::utils::Variable;
 use crate::create_input::PfCurve;
 
-use std::time::Instant;
-use crate::util::timer::print_time;
 use serde::{Deserialize, Serialize};
 
 use crate::target::r1cs::proof::{serialize_into_file, deserialize_from_file};
@@ -195,18 +193,18 @@ pub fn precompute_inner(
 pub fn precompute<P: AsRef<Path>>(pp_path: P, prover_data: &ProverData, prover_data_rand: &ProverDataSpartanRand) -> std::io::Result<()> {
     let f_mod = prover_data.r1cs.field.modulus();
 
-    let result = if f_mod == (&MOD_CURVE25519 as &Integer) {
-                    let (gens, inst) = super::curve25519_rand::precompute(prover_data, prover_data_rand).unwrap();
-                    serialize_into_file(&(gens, inst), pp_path)?;
-                } else if f_mod == (&MOD_T256 as &Integer) {
-                    let (gens, inst) = super::t256_rand::precompute(prover_data, prover_data_rand).unwrap();
-                    serialize_into_file(&(gens, inst), pp_path)?;
-                } else if f_mod == (&MOD_T25519 as &Integer) {
-                    let (gens, inst) = super::t25519_rand::precompute(prover_data, prover_data_rand).unwrap();
-                    serialize_into_file(&(gens, inst), pp_path)?;
-                } else {
-                    panic!("Unsupported modulus");
-                };
+    if f_mod == (&MOD_CURVE25519 as &Integer) {
+        let (gens, inst) = super::curve25519_rand::precompute(prover_data, prover_data_rand).unwrap();
+        serialize_into_file(&(gens, inst), pp_path)?;
+    } else if f_mod == (&MOD_T256 as &Integer) {
+        let (gens, inst) = super::t256_rand::precompute(prover_data, prover_data_rand).unwrap();
+        serialize_into_file(&(gens, inst), pp_path)?;
+    } else if f_mod == (&MOD_T25519 as &Integer) {
+        let (gens, inst) = super::t25519_rand::precompute(prover_data, prover_data_rand).unwrap();
+        serialize_into_file(&(gens, inst), pp_path)?;
+    } else {
+        panic!("Unsupported modulus");
+    }
     Ok(())
 }
 

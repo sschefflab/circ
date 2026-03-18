@@ -23,6 +23,7 @@ lazy_static! {
     pub static ref MOD_CURVE25519: Integer = Integer::from_str_radix("7237005577332262213973186563042994240857116359379907606001950938285454250989", 10).unwrap();
 }
 
+/// Spartan proof system over Curve25519
 pub struct SpartanCurve25519;
 
 impl SpartanProofSystem for SpartanCurve25519 {
