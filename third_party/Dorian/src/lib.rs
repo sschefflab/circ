@@ -16,7 +16,7 @@ extern crate rayon;
 
 mod commitments;
 mod dense_mlpoly;
-pub use dense_mlpoly::DensePolynomial;
+pub use dense_mlpoly::{DensePolynomial, PolyCommitment, PolyCommitmentBlinds};
 mod errors;
 mod group;
 mod math;
@@ -47,7 +47,6 @@ use scalar::Scalar;
 use serde::{Deserialize, Serialize};
 use timer::Timer;
 use transcript::{AppendToTranscript, ProofTranscript};
-use crate::dense_mlpoly::{PolyCommitment, PolyCommitmentBlinds};
 
 /// `ComputationCommitment` holds a public preprocessed NP statement (e.g., R1CS)
 pub struct ComputationCommitment {
@@ -107,6 +106,16 @@ impl Assignment {
     VarsAssignment {
       assignment: padded_assignment,
     }
+  }
+
+  /// Returns the assignment as a vector of byte arrays
+  pub fn to_bytes_vec(&self) -> Vec<[u8; 32]> {
+    self.assignment.iter().map(|s| s.to_bytes()).collect()
+  }
+
+  /// Returns the number of elements in the assignment
+  pub fn len(&self) -> usize {
+    self.assignment.len()
   }
 
   /// pads Assignment to the specified length
@@ -531,10 +540,18 @@ impl NIZKRandGens {
     }
     // println!("last wit len {}", wit_len_padded[wit_len.len()-1]);
     Self {
-      gens_r1cs_sat: IR1CSGens::new(b"gens_r1cs_sat", num_cons, &wit_len_padded), 
+      gens_r1cs_sat: IR1CSGens::new(b"gens_r1cs_sat", num_cons, &wit_len_padded),
       pubinp_len: pubinp_len.to_owned(),
       wit_len: wit_len_padded.clone() // wit_len.clone()
     }
+  }
+
+  /// Commit a witness polynomial using the internal PolyCommitmentGens.
+  /// Returns (DensePolynomial, PolyCommitment, PolyCommitmentBlinds).
+  pub fn commit_witness(&self, wit_scalars: Vec<Scalar>) -> (DensePolynomial, PolyCommitment, PolyCommitmentBlinds) {
+    let poly = DensePolynomial::new(wit_scalars);
+    let (comm, blinds) = poly.commit(&self.gens_r1cs_sat.gens_pc, None);
+    (poly, comm, blinds)
   }
 }
 
@@ -738,6 +755,82 @@ impl NIZKRand {
     verifier_rand
   }
 
+  pub fn prove_01_commit(
+    inst: &Instance,
+    wit0: &VarsAssignment,
+    wit1: &VarsAssignment,
+    wit0_poly: DensePolynomial,
+    wit0_comm: PolyCommitment,
+    wit0_blinds: PolyCommitmentBlinds,
+    rand_len: usize,
+    intermediate: &mut NIZKRandInter,
+    gens: &NIZKRandGens,
+    transcript: &mut Transcript,
+  ) -> Vec<Scalar> {
+    let timer_prove = Timer::new("NIZKRand::prove01_commit");
+    // wit0 occupies [0, wit0_len), wit1 occupies [wit0_len, wit0_len+wit1_len)
+    // wit0 values go into intermediate.wit first so the offset is correct
+    intermediate.wit.extend(wit0.assignment.clone());
+    let mut padded_wit1 = vec![Scalar::zero(); inst.inst.get_num_vars()];
+    padded_wit1[intermediate.wit.len()..intermediate.wit.len() + wit1.assignment.len()].copy_from_slice(&wit1.assignment);
+    let verifier_rand: Vec<Scalar> = IR1CSProof::prove_01_commit(
+      &padded_wit1,
+      wit0_poly,
+      wit0_comm,
+      wit0_blinds,
+      rand_len,
+      &mut intermediate.poly_vars_vec,
+      &mut intermediate.comm_vars_vec,
+      &mut intermediate.blinds_vars_vec,
+      &gens.gens_r1cs_sat,
+      transcript,
+      &mut intermediate.random_tape,
+    );
+    intermediate.wit.extend(wit1.assignment.clone());
+    intermediate.input.extend(verifier_rand.clone());
+    timer_prove.stop();
+    verifier_rand
+  }
+
+  pub fn prove_1_commit(
+    inst: &Instance,
+    vars: &VarsAssignment,
+    intermediate: &mut NIZKRandInter,
+    gens: &NIZKRandGens,
+    transcript: &mut Transcript,
+  ) -> Self {
+    let timer_prove = Timer::new("NIZKRand::prove1_commit");
+
+    let (r1cs_sat_proof, rx, ry) = {
+
+      let (proof, rx, ry) = IR1CSProof::prove_1_commit(
+        &inst.inst,
+        &vars.assignment,
+        &intermediate.wit,
+        &intermediate.input,
+        &mut intermediate.poly_vars_vec,
+        &mut intermediate.comm_vars_vec,
+        &mut intermediate.blinds_vars_vec,
+        &gens.gens_r1cs_sat,
+        transcript,
+        &mut intermediate.random_tape,
+      );
+      (proof, rx, ry)
+    };
+
+    #[cfg(feature = "bench")]
+    {
+      let proof_encoded: Vec<u8> = bincode::serialize(&r1cs_sat_proof).unwrap();
+      Timer::print(&format!("len_r1cs_sat_proof {:?}", proof_encoded.len()));
+    }
+
+    timer_prove.stop();
+    NIZKRand {
+      r1cs_sat_proof,
+      r: (rx, ry),
+    }
+  }
+
   pub fn prove_1(
     inst: &Instance,
     vars: &VarsAssignment,
@@ -748,13 +841,9 @@ impl NIZKRand {
     let timer_prove = Timer::new("NIZKRand::prove1");
 
     let (r1cs_sat_proof, rx, ry) = {
-      // we might need to pad variables
-      // let mut padded_wit = vec![Scalar::zero(); inst.inst.get_num_vars()];
-      // padded_wit[intermediate.wit.len()..intermediate.wit.len() + vars.assignment.len()].copy_from_slice(&vars.assignment);
 
       let (proof, rx, ry) = IR1CSProof::prove_1(
         &inst.inst,
-        // padded_wit,
         &vars.assignment,
         &intermediate.wit,
         &intermediate.input,
@@ -820,6 +909,52 @@ impl NIZKRand {
     )?;
 
     // verify if claimed rx and ry are correct
+    assert_eq!(rx, *claimed_rx);
+    assert_eq!(ry, *claimed_ry);
+    timer_sat_proof.stop();
+    timer_verify.stop();
+
+    Ok(())
+  }
+
+  /// Verify a proof produced by prove_01_commit + prove_1_commit.
+  pub fn verify_commit(
+    &self,
+    inst: &Instance,
+    input: &mut InputsAssignment,
+    transcript: &mut Transcript,
+    gens: &NIZKRandGens,
+  ) -> Result<(), ProofVerifyError> {
+    let timer_verify = Timer::new("NIZKRand::verify_commit");
+
+    transcript.append_protocol_name(NIZKRand::protocol_name());
+    transcript.append_message(b"R1CSInstanceDigest", &inst.digest);
+
+    // We send evaluations of A, B, C at r = (rx, ry) as claims
+    // to enable the verifier complete the first sum-check
+    let timer_eval = Timer::new("eval_sparse_polys");
+    let (claimed_rx, claimed_ry) = &self.r;
+    let inst_evals = inst.inst.evaluate(claimed_rx, claimed_ry);
+    timer_eval.stop();
+
+    let timer_sat_proof = Timer::new("verify_sat_proof");
+    assert_eq!(input.assignment.len(), gens.pubinp_len[0], "input len: {}, pubinp_len: {}", input.assignment.len(), gens.pubinp_len[0]);
+    assert_eq!(gens.pubinp_len.iter().sum::<usize>(), // for debug only
+               inst.inst.get_num_inputs(),
+                "pubinp_len: {}, num_inputs: {}", gens.pubinp_len.iter().sum::<usize>(), inst.inst.get_num_inputs()
+              );
+    // pubinp_len[1] is the rand_len for the first-round challenge
+    let rand_len = gens.pubinp_len[1];
+    let (rx, ry) = self.r1cs_sat_proof.verify_commit(
+      inst.inst.get_num_vars(),
+      inst.inst.get_num_cons(),
+      rand_len,
+      &mut input.assignment,
+      &inst_evals,
+      transcript,
+      &gens.gens_r1cs_sat,
+    )?;
+
     assert_eq!(rx, *claimed_rx);
     assert_eq!(ry, *claimed_ry);
     timer_sat_proof.stop();
