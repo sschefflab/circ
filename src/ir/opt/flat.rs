@@ -111,10 +111,12 @@ pub fn flatten_nary_ops_cached(term_: Term, Cache(ref mut rewritten): &mut Cache
                 )
             }
             _ => {
-                if t.cs().iter().all(|c| rewritten.get(c).and_then(|e| match e {
-                    Entry::Term(t) => Some(&**t),
-                    _ => None,
-                }) == Some(c)) {
+                if t.cs().iter().all(|c| {
+                    rewritten.get(c).and_then(|e| match e {
+                        Entry::Term(t) => Some(&**t),
+                        _ => None,
+                    }) == Some(c)
+                }) {
                     Entry::Term(Rc::new(t.clone()))
                 } else {
                     Entry::Term(Rc::new(term(
