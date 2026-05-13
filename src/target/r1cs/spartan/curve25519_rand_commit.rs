@@ -6,7 +6,7 @@ use libdorian::scalar::Scalar as OriScalar;
 use libdorian::{
     Assignment, DensePolynomial, InputsAssignment, Instance,
     NIZKRand, NIZKRandGens, NIZKRandInter,
-    PolyCommitment, PolyCommitmentBlinds, VarsAssignment,
+    PolyCommitment, PolyCommitmentBlinds,
 };
 use merlin::Transcript;
 use std::io;

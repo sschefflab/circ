@@ -24,6 +24,13 @@ use circ::target::r1cs::ProverDataSpartanRand;
 #[cfg(feature = "spartan")]
 use fxhash::FxHashMap as HashMap;
 
+#[derive(PartialEq, Eq, Debug, Clone, ValueEnum)]
+enum PfCurve {
+    T256,
+    Curve25519,
+    T25519,
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "zk_commit", about = "The CirC ZKP runner with commitment support")]
 struct Options {
@@ -37,15 +44,10 @@ struct Options {
     proof: PathBuf,
     #[arg(long, default_value = "in")]
     inputs: PathBuf,
-    #[arg(long, default_value = "pin")]
-    pin: PathBuf,
-    #[arg(long, default_value = "vin")]
-    vin: PathBuf,
     #[arg(long)]
     action: ProofAction,
-    /// Number of first-round witness elements to commit externally
-    #[arg(long, default_value = "4")]
-    commit_size: usize,
+    #[arg(long, default_value = "curve25519")]
+    pfcurve: PfCurve,
     #[command(flatten)]
     circ: CircOpt,
 }
@@ -96,54 +98,111 @@ fn main() {
         .format_level(false)
         .format_timestamp(None)
         .init();
-    let opts = Options::parse();
+    let mut opts = Options::parse();
+
+    // Map --pfcurve to the corresponding field modulus, same as circ.rs does.
+    match opts.pfcurve {
+        PfCurve::Curve25519 => {
+            opts.circ.field.custom_modulus = "7237005577332262213973186563042994240857116359379907606001950938285454250989".to_string();
+        }
+        PfCurve::T256 => {
+            opts.circ.field.custom_modulus = "115792089210356248762697446949407573530086143415290314195533631308867097853951".to_string();
+        }
+        PfCurve::T25519 => {
+            opts.circ.field.custom_modulus = "57896044618658097711785492504343953926634992332820282019728792003956564819949".to_string();
+        }
+    }
     circ::cfg::set(&opts.circ);
 
     #[cfg(feature = "spartan")]
     match opts.action {
         ProofAction::Prove => {
             let mut prover_input_map = parse_value_map(&std::fs::read(&opts.inputs).unwrap());
-            let commit_size = opts.commit_size;
-            println!("Dorian Proving with commitment (Curve25519), commit_size={}", commit_size);
 
-            // Load setup parameters
-            let (gens, _inst): (NIZKRandGens, Instance) =
-                deserialize_from_file(&opts.pp).unwrap();
+            let commit_prefix = &opts.circ.r1cs.commit_input_prefix;
 
-            // Compute the commitment from the actual evaluator witness
-            let (wit_poly, wit_comm, wit_blinds) = compute_witness_commitment(
-                &opts.prover_key, &gens, &prover_input_map, commit_size,
-            );
+            let key_matches = |k: &str| -> bool {
+                !commit_prefix.is_empty()
+                    && (k == commit_prefix.as_str()
+                        || k.starts_with(&format!("{}.", commit_prefix))
+                        || k.starts_with(&format!("{}_", commit_prefix)))
+            };
 
-            // Split input map: first commit_size keys (sorted) go to commit_input_map
-            let mut keys: Vec<String> = prover_input_map.keys().cloned().collect();
-            keys.sort();
-            assert!(commit_size <= keys.len(),
-                "commit_size ({}) exceeds number of inputs ({})", commit_size, keys.len());
-            let committed_keys: Vec<String> = keys[..commit_size].to_vec();
-            let mut commit_input_map: HashMap<String, circ::ir::term::Value> = HashMap::default();
-            for key in &committed_keys {
-                let val = prover_input_map.remove(key).unwrap();
-                commit_input_map.insert(key.clone(), val);
+            // commit_size = number of prefix-matching keys in the input map.
+            // This is used consistently in both compute_witness_commitment and prove_commit
+            // (which derives commit_size from commit_input_map.len()).
+            let commit_size = if commit_prefix.is_empty() {
+                0
+            } else {
+                prover_input_map.keys().filter(|k| key_matches(k)).count()
+            };
+
+            if commit_size == 0 {
+                // No external commitment — plain Dorian prove with zero dummy commitment.
+                println!("Dorian Proving (Curve25519), no external commitment");
+                let empty: HashMap<String, circ::ir::term::Value> = HashMap::default();
+                let (gens, _inst): (NIZKRandGens, Instance) =
+                    deserialize_from_file(&opts.pp).unwrap();
+                let num_vars_padded: usize = gens.wit_len.iter().sum();
+                let scalars = vec![OriScalar::zero(); num_vars_padded];
+                let (wit_poly, wit_comm, wit_blinds) = gens.commit_witness(scalars);
+                spartan::spartan_rand::prove_commit_fs(
+                    &opts.prover_key,
+                    &opts.pp,
+                    &empty,
+                    &prover_input_map,
+                    &opts.proof,
+                    wit_poly,
+                    wit_comm,
+                    wit_blinds,
+                )
+                .unwrap();
+            } else {
+                println!(
+                    "Dorian Proving with commitment (Curve25519), committing '{}' ({} witness elements)",
+                    commit_prefix, commit_size
+                );
+
+                let (gens, _inst): (NIZKRandGens, Instance) =
+                    deserialize_from_file(&opts.pp).unwrap();
+
+                let (wit_poly, wit_comm, wit_blinds) = compute_witness_commitment(
+                    &opts.prover_key, &gens, &prover_input_map, commit_size,
+                );
+
+                let committed_keys: Vec<String> = prover_input_map
+                    .keys()
+                    .filter(|k| key_matches(k))
+                    .cloned()
+                    .collect();
+                let mut commit_input_map: HashMap<String, circ::ir::term::Value> = HashMap::default();
+                for key in &committed_keys {
+                    let val = prover_input_map.remove(key).unwrap();
+                    commit_input_map.insert(key.clone(), val);
+                }
+                println!("Committed inputs: {} keys matching '{}'", commit_input_map.len(), commit_prefix);
+
+                spartan::spartan_rand::prove_commit_fs(
+                    &opts.prover_key,
+                    &opts.pp,
+                    &commit_input_map,
+                    &prover_input_map,
+                    &opts.proof,
+                    wit_poly,
+                    wit_comm,
+                    wit_blinds,
+                )
+                .unwrap();
             }
-            println!("Committed inputs: {:?}", committed_keys);
-
-            // Prove: commit_input_map has committed entries, prover_input_map has the rest
-            spartan::spartan_rand::prove_commit_fs(
-                &opts.prover_key,
-                &opts.pp,
-                &commit_input_map,
-                &prover_input_map,
-                &opts.proof,
-                wit_poly,
-                wit_comm,
-                wit_blinds,
-            )
-            .unwrap();
         }
         ProofAction::Verify => {
             let verifier_input_map = parse_value_map(&std::fs::read(&opts.inputs).unwrap());
-            println!("Dorian Verifying with commitment (Curve25519)");
+            let commit_prefix = &opts.circ.r1cs.commit_input_prefix;
+            if commit_prefix.is_empty() {
+                println!("Dorian Verifying (Curve25519), no external commitment");
+            } else {
+                println!("Dorian Verifying with commitment (Curve25519), committed input: '{}'", commit_prefix);
+            }
             spartan::spartan_rand::verify_commit_fs(
                 &opts.verifier_key,
                 &opts.pp,

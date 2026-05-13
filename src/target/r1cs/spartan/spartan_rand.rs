@@ -36,7 +36,7 @@ pub trait ISpartanCommitProofSystem {
     /// Polynomial commitment blinds type (e.g., PolyCommitmentBlinds)
     type CommitmentBlinds;
 
-    /// Proving with two input maps: committed inputs and plaintext inputs
+    /// Proving with two input maps: committed inputs and plaintext inputs.
     fn prove_fs_inner(
         pk_path: impl AsRef<Path>,
         pp: &Self::SetupParameter,

@@ -101,6 +101,17 @@ pub struct R1csOpt {
     )]
     /// linear combination constraints up to this size will be eliminated
     pub lc_elim_thresh: usize,
+
+    /// Input variable name prefix to sort first in the witness ordering.
+    /// Witnesses whose names match this prefix are placed before all others,
+    /// enabling them to be externally committed to in the Dorian proof system.
+    /// An empty string disables this feature (default).
+    #[arg(
+        long = "r1cs-commit-input",
+        env = "R1CS_COMMIT_INPUT",
+        default_value = ""
+    )]
+    pub commit_input_prefix: String,
 }
 
 impl Default for R1csOpt {
@@ -110,6 +121,7 @@ impl Default for R1csOpt {
             profile: false,
             div_by_zero: FieldDivByZero::Incomplete,
             lc_elim_thresh: 50,
+            commit_input_prefix: String::new(),
         }
     }
 }
