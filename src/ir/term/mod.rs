@@ -1818,6 +1818,20 @@ impl ComputationMetadata {
 
     /// Get the interactive structure of the variables. See [InteractiveVars].
     pub fn interactive_vars(&self) -> InteractiveVars {
+        self.interactive_vars_with_commit("")
+    }
+
+    /// Like [interactive_vars], but sorts witnesses whose names match `commit_prefix`
+    /// to the front of the first-round witness list.
+    ///
+    /// A name matches `commit_prefix` if it equals the prefix exactly, or starts with
+    /// `"<prefix>."` or `"<prefix>_"` (covering dot-indexed arrays and struct fields).
+    /// When `commit_prefix` is empty this behaves identically to [interactive_vars].
+    ///
+    /// Use this when compiling a circuit whose prover key will be used with an external
+    /// polynomial commitment (e.g. Dorian's `prove_01_commit`), which requires the
+    /// committed variables to occupy positions 0..N in the first-round witness vector.
+    pub fn interactive_vars_with_commit(&self, commit_prefix: &str) -> InteractiveVars {
         let final_round = self.vars.values().map(|m| m.round).max().unwrap_or(0);
         let mut instances = Vec::new();
         let mut rounds = vec![RoundVars::default(); final_round as usize + 1];
@@ -1857,14 +1871,31 @@ impl ComputationMetadata {
             rounds,
             final_witnesses,
         };
-        // sort!
+        // Sort witnesses: if a commit prefix is given, matching names sort before all others;
+        // within each group, sort alphabetically.
         let cmp_name = |a: &Term, b: &Term| a.as_var_name().cmp(b.as_var_name());
+        let name_matches = |t: &Term| -> bool {
+            if commit_prefix.is_empty() {
+                return false;
+            }
+            let n = t.as_var_name();
+            n == commit_prefix
+                || n.starts_with(&format!("{}.", commit_prefix))
+                || n.starts_with(&format!("{}_", commit_prefix))
+        };
+        let cmp_commit_first = |a: &Term, b: &Term| {
+            match (name_matches(a), name_matches(b)) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => cmp_name(a, b),
+            }
+        };
         ret.instances.sort_by(cmp_name);
         for round in &mut ret.rounds {
-            round.witnesses.sort_by(cmp_name);
+            round.witnesses.sort_by(cmp_commit_first);
             round.challenges.sort_by(cmp_name);
         }
-        ret.final_witnesses.sort_by(cmp_name);
+        ret.final_witnesses.sort_by(cmp_commit_first);
         ret
     }
 

@@ -15,8 +15,78 @@ use serde::{Deserialize, Serialize};
 use crate::target::r1cs::proof::{serialize_into_file, deserialize_from_file};
 
 use super::curve25519_rand::SpartanRandCurve25519;
+use super::curve25519_rand_commit::SpartanRandCommitCurve25519;
 use super::t256_rand::SpartanRandT256;
 use super::t25519_rand::SpartanRandT25519;
+
+/// A trait for Spartan proofs with commitment support (uses prove_01_commit + prove_1_commit + verify_commit)
+pub trait ISpartanCommitProofSystem {
+    /// A verifying key. Also used for commitments.
+    type VerifierKey: Serialize + for<'a> Deserialize<'a>;
+    /// A proving key
+    type ProverKey: Serialize + for<'a> Deserialize<'a>;
+    /// Precomputed public parameter
+    type SetupParameter: Serialize + for<'a> Deserialize<'a>;
+    /// A proof
+    type Proof: Serialize + for<'a> Deserialize<'a>;
+    /// Dense polynomial type (e.g., DensePolynomial)
+    type DensePoly;
+    /// Polynomial commitment type (e.g., PolyCommitment)
+    type Commitment;
+    /// Polynomial commitment blinds type (e.g., PolyCommitmentBlinds)
+    type CommitmentBlinds;
+
+    /// Proving with two input maps: committed inputs and plaintext inputs.
+    fn prove_fs_inner(
+        pk_path: impl AsRef<Path>,
+        pp: &Self::SetupParameter,
+        commit_input_map: &HashMap<String, Value>,
+        plain_input_map: &HashMap<String, Value>,
+        wit_poly: Self::DensePoly,
+        wit_comm: Self::Commitment,
+        wit_blinds: Self::CommitmentBlinds,
+    ) -> std::io::Result<Self::Proof>;
+
+    /// Prove to/from files with two input maps
+    fn prove_fs(
+        pk_path: impl AsRef<Path>,
+        pp_path: impl AsRef<Path>,
+        commit_input_map: &HashMap<String, Value>,
+        plain_input_map: &HashMap<String, Value>,
+        pf_path: impl AsRef<Path>,
+        wit_poly: Self::DensePoly,
+        wit_comm: Self::Commitment,
+        wit_blinds: Self::CommitmentBlinds,
+    ) -> std::io::Result<()> {
+        let pp: Self::SetupParameter = deserialize_from_file(pp_path)?;
+        let proof = Self::prove_fs_inner(pk_path, &pp, commit_input_map, plain_input_map, wit_poly, wit_comm, wit_blinds)?;
+        serialize_into_file(&proof, pf_path)
+    }
+
+    /// Verifying (uses verify_commit)
+    fn verify(
+        pp: &Self::SetupParameter,
+        verifier_data: &Self::VerifierKey,
+        proof: &Self::Proof,
+        inputs_map: &HashMap<String, Value>,
+        print_msg: bool,
+    ) -> io::Result<()>;
+
+    /// Verify from files
+    fn verify_fs<P: AsRef<Path>>(
+        pp_path: P,
+        vk_path: P,
+        pf_path: P,
+        inputs_map: &HashMap<String, Value>,
+    ) -> io::Result<()> {
+        let print_msg = true;
+
+        let pp: Self::SetupParameter = deserialize_from_file(pp_path)?;
+        let verifier_data: Self::VerifierKey = deserialize_from_file(vk_path)?;
+        let proof: Self::Proof = deserialize_from_file(pf_path)?;
+        Self::verify(&pp, &verifier_data, &proof, inputs_map, print_msg)
+    }
+}
 
 /// A trait from Spartan proofs
 pub trait ISpartanProofSystem {
@@ -256,9 +326,38 @@ pub fn verify_fs<P: AsRef<Path>>(
         }
         PfCurve::T25519 => {
             SpartanRandT25519::verify_fs(
-                pp_path, v_path, pf_path, inputs_map, 
+                pp_path, v_path, pf_path, inputs_map,
             )
         }
     }
+}
+
+/// Prove to/from files with commitment (Curve25519 only)
+pub fn prove_commit_fs<P: AsRef<Path>>(
+    p_path: P,
+    pp_path: P,
+    commit_input_map: &HashMap<String, Value>,
+    plain_input_map: &HashMap<String, Value>,
+    pf_path: P,
+    wit_poly: libdorian::DensePolynomial,
+    wit_comm: libdorian::PolyCommitment,
+    wit_blinds: libdorian::PolyCommitmentBlinds,
+) -> std::io::Result<()> {
+    SpartanRandCommitCurve25519::prove_fs(
+        p_path, pp_path, commit_input_map, plain_input_map, pf_path,
+        wit_poly, wit_comm, wit_blinds,
+    )
+}
+
+/// Verify spartan proof with commitment from files (Curve25519 only)
+pub fn verify_commit_fs<P: AsRef<Path>>(
+    v_path: P,
+    pp_path: P,
+    inputs_map: &HashMap<String, Value>,
+    pf_path: P,
+) -> io::Result<()> {
+    SpartanRandCommitCurve25519::verify_fs(
+        pp_path, v_path, pf_path, inputs_map,
+    )
 }
 

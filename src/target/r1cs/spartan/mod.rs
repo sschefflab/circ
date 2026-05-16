@@ -2,6 +2,7 @@
 
 pub mod curve25519;
 pub mod curve25519_rand;
+pub mod curve25519_rand_commit;
 pub mod t25519;
 pub mod t25519_rand;
 pub mod t256;

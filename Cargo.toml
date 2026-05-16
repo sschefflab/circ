@@ -111,6 +111,10 @@ name = "zk"
 required-features = ["r1cs"]
 
 [[example]]
+name = "zk_commit"
+required-features = ["r1cs"]
+
+[[example]]
 name = "cp"
 required-features = ["bellman", "poly"]
 

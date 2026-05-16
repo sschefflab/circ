@@ -1140,7 +1140,7 @@ pub fn to_r1cs(cs: &Computation, cfg: &CircCfg) -> R1cs {
             .sum::<usize>()
     );
     debug!("declaring inputs");
-    let vars = cs.metadata.interactive_vars();
+    let vars = cs.metadata.interactive_vars_with_commit(&cfg.r1cs.commit_input_prefix);
     trace!("interactive_vars: {:#?}", vars);
     for i in &vars.instances {
         converter.embed_var(i, VarType::Inst);
