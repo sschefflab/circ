@@ -12,6 +12,7 @@ static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[macro_use]
 pub mod ir;
+pub mod compile;
 pub mod cfg;
 pub mod circify;
 pub mod front;
