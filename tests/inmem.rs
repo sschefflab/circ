@@ -18,8 +18,9 @@ fn mul_setup_prove_verify_in_memory() {
     let comps = ZSharpCurlyFE::gen(inputs);
     let cs = comps.get("main");
 
-    // 2. Lower it to R1CS and produce the prover/verifier data.
-    let (p_data, v_data) = circ::compile::to_proof_data(cs, circ::cfg::cfg());
+    // 2. Lower it to R1CS and produce the prover/verifier data
+    //    (the third value is R1CS stats, which the test doesn't need).
+    let (p_data, v_data, _stats) = circ::compile::to_proof_data(cs, circ::cfg::cfg());
 
     // 3. Hardcode the inputs in memory (no .pin / .vin files!).
     //    Prover knows x and y; verifier only knows the public output `return`.
