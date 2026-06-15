@@ -366,12 +366,13 @@ fn main() {
             let cs = cs.get("main");
             trace!("IR: {}", circ::ir::term::text::serialize_computation(cs));
             println!("Running r1cs optimizations ");
-            let (prover_data, verifier_data) = circ::compile::to_proof_data(cs, cfg());
+            let (prover_data, verifier_data, stats) = circ::compile::to_proof_data(cs, cfg());
 
             println!(
-                "Final r1cs: {} constraints, {} variables, {} rounds",
-                prover_data.r1cs.constraints().len(),
-                prover_data.r1cs.vars().len(),
+                "Final r1cs: {} constraints, {} variables, {} entries, {} rounds",
+                stats.n_constraints,
+                stats.n_vars,
+                stats.n_entries(),
                 prover_data.precompute.stage_sizes().count() - 1
             );
             println!(
