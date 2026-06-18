@@ -3,8 +3,8 @@
 
 use circ::cfg::{clap, CircOpt};
 use clap::Parser;
-use circ::front::zsharpcurly::{Inputs, ZSharpCurlyFE};
-use circ::front::{FrontEnd, Mode};
+use circ::front::zsharpcurly::ZSharpCurlyFE;
+use circ::front::Mode;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -27,15 +27,9 @@ fn main() {
     let options = Options::parse();
     circ::cfg::set(&options.circ);
 
-    let inputs = Inputs {
-        file: options.path,
-        entry: "main".to_string(),
-        mode: Mode::Proof,
-    };
-
     // Try to generate the circuit - this will parse and type check
     match std::panic::catch_unwind(|| {
-        ZSharpCurlyFE::gen(inputs)
+        ZSharpCurlyFE::check(options.path, Mode::Proof)
     }) {
         Ok(_) => {
             println!("✓ Program is valid");

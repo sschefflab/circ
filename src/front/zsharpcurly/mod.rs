@@ -95,6 +95,13 @@ impl FrontEnd for ZSharpCurlyFE {
 }
 
 impl ZSharpCurlyFE {
+    /// Parse and typecheck a Z# curly file without compiling an entry function.
+    pub fn check(file: PathBuf, mode: Mode) {
+        let loader = parser::ZLoad::new();
+        let asts = loader.load(&file);
+        let mut g = ZGen::new(asts, mode, loader.stdlib(), cfg().zsharp.isolate_asserts);
+        g.visit_files();
+    }
     /// Execute the Z# front-end interpreter on the supplied file with the supplied inputs
     pub fn interpret(i: Inputs, input_scalar_values: FxHashMap<String, Value>) -> T {
         let Inputs { file, entry, mode } = i;
