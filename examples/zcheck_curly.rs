@@ -29,6 +29,7 @@ fn main() {
 
     let inputs = Inputs {
         file: options.path,
+        entry: "main".to_string(),
         mode: Mode::Proof,
     };
 

@@ -13,6 +13,7 @@ fn mul_setup_prove_verify_in_memory() {
     // 1. Compile the .zok file into an in-memory circuit.
     let inputs = zsharpcurly::Inputs {
         file: PathBuf::from("examples/ZoKratesCurly/pf/mul.zok"),
+        entry: "main".to_string(),
         mode: Mode::Proof,
     };
     let comps = ZSharpCurlyFE::gen(inputs);

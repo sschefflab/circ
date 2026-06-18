@@ -31,8 +31,10 @@ const GC_INC: usize = 32;
 
 /// Inputs to the Z# compiler
 pub struct Inputs {
-    /// The file to look for `main` in.
+    /// The file containing the entry function.
     pub file: PathBuf,
+    /// The function to compile as the entry point.
+    pub entry: String,
     /// The mode to generate for (MPC or proof). Effects visibility.
     pub mode: Mode,
 }
@@ -67,17 +69,19 @@ pub struct ZSharpCurlyFE;
 impl FrontEnd for ZSharpCurlyFE {
     type Inputs = Inputs;
     fn gen(i: Inputs) -> Computations {
+        let Inputs { file, entry, mode } = i;
+
         debug!(
             "Starting Z# front-end, field: {}",
             Sort::Field(cfg().field().clone())
         );
         let loader = parser::ZLoad::new();
-        let asts = loader.load(&i.file);
-        let mut g = ZGen::new(asts, i.mode, loader.stdlib(), cfg().zsharp.isolate_asserts);
+        let asts = loader.load(&file);
+        let mut g = ZGen::new(asts, mode, loader.stdlib(), cfg().zsharp.isolate_asserts);
         g.visit_files();
-        g.file_stack_push(i.file);
+        g.file_stack_push(file);
         g.generics_stack_push(HashMap::new());
-        g.entry_fn("main");
+        g.entry_fn(&entry);
         g.generics_stack_pop();
         g.file_stack_pop();
 
@@ -85,7 +89,7 @@ impl FrontEnd for ZSharpCurlyFE {
         let main_comp = std::rc::Rc::try_unwrap(g.into_circify().consume())
             .unwrap_or_else(|rc| (*rc).clone())
             .into_inner();
-        cs.comps.insert("main".to_string(), main_comp);
+        cs.comps.insert(entry, main_comp);
         cs
     }
 }
@@ -93,14 +97,16 @@ impl FrontEnd for ZSharpCurlyFE {
 impl ZSharpCurlyFE {
     /// Execute the Z# front-end interpreter on the supplied file with the supplied inputs
     pub fn interpret(i: Inputs, input_scalar_values: FxHashMap<String, Value>) -> T {
+        let Inputs { file, entry, mode } = i;
+
         let loader = parser::ZLoad::new();
-        let asts = loader.load(&i.file);
-        let mut g = ZGen::new(asts, i.mode, loader.stdlib(), cfg().zsharp.isolate_asserts);
+        let asts = loader.load(&file);
+        let mut g = ZGen::new(asts, mode, loader.stdlib(), cfg().zsharp.isolate_asserts);
         g.visit_files();
-        g.file_stack_push(i.file);
+        g.file_stack_push(file);
         g.generics_stack_push(HashMap::new());
-        g.const_entry_fn("main", input_scalar_values)
-    }
+        g.const_entry_fn(&entry, input_scalar_values)
+}
 }
 
 struct ZGen<'ast> {
@@ -1073,9 +1079,15 @@ impl<'ast> ZGen<'ast> {
         let f = self
             .functions
             .get(&f_file)
-            .unwrap_or_else(|| panic!("No file '{:?}'", &f_file))
+            .unwrap_or_else(|| {
+                eprintln!("Error: could not find file '{}'", f_file.display());
+                std::process::exit(1)
+            })
             .get(&f_name)
-            .unwrap_or_else(|| panic!("No function '{}'", &f_name))
+            .unwrap_or_else(|| {
+                eprintln!("Error: no function named '{}'. Check the --entry flag.", &f_name);
+                std::process::exit(1)
+            })
             .clone();
         // XXX(unimpl) tuple returns not supported
         if !f.generics.is_empty() {

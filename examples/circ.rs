@@ -88,6 +88,10 @@ struct FrontendOptions {
     /// Value threshold
     #[arg(long)]
     value_threshold: Option<u64>,
+
+    /// Name of the function to compile
+    #[arg(long, default_value = "main")]
+    entry: String,
 }
 
 #[derive(Debug, Subcommand)]
@@ -238,6 +242,7 @@ fn main() {
         Backend::Smt { .. } => Mode::Proof,
     };
     let language = determine_language(&options.frontend.language, &options.path);
+    let entry = options.frontend.entry.clone();
     println!("Running frontend");
     let cs = match language {
         #[cfg(all(feature = "smt", feature = "zok"))]
@@ -252,6 +257,7 @@ fn main() {
         DeterminedLanguage::ZsharpCurly => {
             let inputs = zsharpcurly::Inputs {
                 file: options.path,
+                entry: entry.clone(),
                 mode,
             };
             ZSharpCurlyFE::gen(inputs)
@@ -363,7 +369,7 @@ fn main() {
             proof_impl,
             ..
         } => {
-            let cs = cs.get("main");
+            let cs = cs.get(&entry);
             trace!("IR: {}", circ::ir::term::text::serialize_computation(cs));
             println!("Running r1cs optimizations ");
             let (prover_data, verifier_data, stats) = circ::compile::to_proof_data(cs, cfg());
