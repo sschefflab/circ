@@ -1079,15 +1079,9 @@ impl<'ast> ZGen<'ast> {
         let f = self
             .functions
             .get(&f_file)
-            .unwrap_or_else(|| {
-                eprintln!("Error: could not find file '{}'", f_file.display());
-                std::process::exit(1)
-            })
+            .unwrap_or_else(|| panic!("No file '{:?}'", &f_file))
             .get(&f_name)
-            .unwrap_or_else(|| {
-                eprintln!("Error: no function named '{}'. Check the --entry flag.", &f_name);
-                std::process::exit(1)
-            })
+            .unwrap_or_else(|| panic!("No function '{}'", &f_name))
             .clone();
         // XXX(unimpl) tuple returns not supported
         if !f.generics.is_empty() {
