@@ -25,10 +25,11 @@ pub use ast::{
     NotOperator, Parameter, PosOperator, PostfixExpression, Pragma, PrivateVisibility,
     PublicVisibility, Range, RangeOrExpression, RawString, ReturnStatement, Span, Spread,
     SpreadOrExpression, Statement, StructDefinition, StructField, StructType, SymbolDeclaration,
-    TernaryExpression, ToExpression, TupleType, Type, TypeDefinition, TypedIdentifier,
-    TypedIdentifierOrAssignee, U16NumberExpression, U16Suffix, U16Type, U32NumberExpression,
-    U32Suffix, U32Type, U64NumberExpression, U64Suffix, U64Type, U8NumberExpression, U8Suffix,
-    U8Type, UnaryExpression, UnaryOperator, Underscore, Visibility, EOI,
+    TernaryExpression, TestAnnotation, TestInput, ToExpression, TupleType, Type, TypeDefinition,
+    TypedIdentifier, TypedIdentifierOrAssignee, U16NumberExpression, U16Suffix, U16Type,
+    U32NumberExpression, U32Suffix, U32Type, U64NumberExpression, U64Suffix, U64Type,
+    U8NumberExpression, U8Suffix, U8Type, UnaryExpression, UnaryOperator, Underscore, Visibility,
+    EOI,
 };
 
 mod ast {
@@ -182,11 +183,29 @@ mod ast {
     #[derive(Debug, FromPest, PartialEq, Clone)]
     #[pest_ast(rule(Rule::function_definition))]
     pub struct FunctionDefinition<'ast> {
+        pub test: Option<TestAnnotation<'ast>>,
         pub id: IdentifierExpression<'ast>,
         pub generics: Vec<IdentifierExpression<'ast>>,
         pub parameters: Vec<Parameter<'ast>>,
         pub return_type: Option<Type<'ast>>,
         pub statements: Vec<Statement<'ast>>,
+        #[pest_ast(outer())]
+        pub span: Span<'ast>,
+    }
+
+    #[derive(Debug, FromPest, PartialEq, Clone)]
+    #[pest_ast(rule(Rule::test_annotation))]
+    pub struct TestAnnotation<'ast> {
+        pub inputs: Vec<TestInput<'ast>>,
+        #[pest_ast(outer())]
+        pub span: Span<'ast>,
+    }
+
+    #[derive(Debug, FromPest, PartialEq, Clone)]
+    #[pest_ast(rule(Rule::test_input))]
+    pub struct TestInput<'ast> {
+        pub name: IdentifierExpression<'ast>,
+        pub value: Expression<'ast>,
         #[pest_ast(outer())]
         pub span: Span<'ast>,
     }
@@ -1269,6 +1288,7 @@ mod tests {
                         span: Span::new(source, 9, 21).unwrap()
                     })),
                     SymbolDeclaration::Function(FunctionDefinition {
+                        test: None,
                         generics: vec![],
                         id: IdentifierExpression {
                             value: String::from("main"),
@@ -1337,6 +1357,7 @@ mod tests {
                         span: Span::new(source, 9, 21).unwrap()
                     })),
                     SymbolDeclaration::Function(FunctionDefinition {
+                        test: None,
                         generics: vec![],
                         id: IdentifierExpression {
                             value: String::from("main"),
@@ -1429,6 +1450,7 @@ mod tests {
                         span: Span::new(source, 9, 21).unwrap()
                     })),
                     SymbolDeclaration::Function(FunctionDefinition {
+                        test: None,
                         generics: vec![],
                         id: IdentifierExpression {
                             value: String::from("main"),
@@ -1489,6 +1511,7 @@ mod tests {
             Ok(File {
                 pragma: None,
                 declarations: vec![SymbolDeclaration::Function(FunctionDefinition {
+                    test: None,
                     generics: vec![],
                     id: IdentifierExpression {
                         value: String::from("main"),
@@ -1559,5 +1582,64 @@ mod tests {
 "#;
         let res = generate_ast(source);
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn parses_bare_test_marker() {
+        let source = r#"@test;
+        def is_a_test() -> bool {
+            return true;
+        }
+
+        def not_a_test() -> bool {
+            return true;
+        }
+"#;
+        let ast = generate_ast(source).unwrap();
+        let funcs: Vec<&FunctionDefinition> = ast
+            .declarations
+            .iter()
+            .filter_map(|d| match d {
+                SymbolDeclaration::Function(f) => Some(f),
+                _ => None,
+            })
+            .collect();
+
+        assert!(funcs[0].test.is_some(), "is_a_test should carry @test");
+        assert!(
+            funcs[1].test.is_none(),
+            "not_a_test should have no annotation"
+        );
+    }
+    #[test]
+    fn parses_test_inputs() {
+        let source = r#"@test a = 3, b = 3 * 3;
+        def test_sq(private field a, private field b) -> bool {
+            return true;
+        }
+"#;
+        let ast = generate_ast(source).unwrap();
+        let f = match &ast.declarations[0] {
+            SymbolDeclaration::Function(f) => f,
+            _ => panic!("expected a function"),
+        };
+        let ann = f.test.as_ref().expect("should carry @test");
+        assert_eq!(ann.inputs.len(), 2);
+        assert_eq!(ann.inputs[0].name.value, "a");
+        assert_eq!(ann.inputs[1].name.value, "b");
+    }
+
+    #[test]
+    fn bare_marker_still_parses() {
+        let source = r#"@test;
+        def t() -> bool { return true; }
+"#;
+        let ast = generate_ast(source).unwrap();
+        let f = match &ast.declarations[0] {
+            SymbolDeclaration::Function(f) => f,
+            _ => panic!("expected a function"),
+        };
+        let ann = f.test.as_ref().expect("should carry @test");
+        assert_eq!(ann.inputs.len(), 0);
     }
 }
