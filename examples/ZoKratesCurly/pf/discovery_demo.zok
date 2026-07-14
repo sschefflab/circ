@@ -1,0 +1,16 @@
+// Demo file for @test discovery (examples/ztest.rs).
+// Two functions are marked @test; `helper` is not and should be skipped.
+
+@test a = 4, b = 5;
+def test_mul(private field a, private field b) -> field {
+    return a * b;
+}
+
+@test x = 2, y = 3 * 3;
+def test_add(private field x, private field y) -> field {
+    return x + y;
+}
+
+def helper(field n) -> field {
+    return n + 1;
+}

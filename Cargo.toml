@@ -138,5 +138,9 @@ required-features = ["lp", "aby"]
 name = "r1cs_inspect"
 required-features = ["r1cs"]
 
+[[example]]
+name = "ztest"
+required-features = ["smt", "zokc"]
+
 [profile.release]
 debug = true
