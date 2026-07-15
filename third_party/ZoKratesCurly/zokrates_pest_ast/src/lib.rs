@@ -1626,6 +1626,9 @@ mod tests {
         let ann = f.test.as_ref().expect("should carry @test");
         assert_eq!(ann.inputs.len(), 2);
         assert_eq!(ann.inputs[0].name.value, "a");
+        assert_eq!(ann.inputs[0].value.span().as_str(), "3");
+
         assert_eq!(ann.inputs[1].name.value, "b");
+        assert_eq!(ann.inputs[1].value.span().as_str(), "3 * 3");
     }
 }
