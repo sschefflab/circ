@@ -39,6 +39,42 @@ pub struct Inputs {
     pub mode: Mode,
 }
 
+/// A function marked `@test`, with its annotation inputs evaluated to
+/// concrete values.
+///
+/// Contract: a `TestCase` guarantees its *inputs* are validated — names
+/// match parameters exactly, types are checked, values are constant. It
+/// does not decide whether the function's *shape* is runnable; that is
+/// runner policy. In particular, return-typed test functions are
+/// discovered (see [Self::has_return]) and it is up to the runner to
+/// support or reject them.
+#[derive(Debug, Clone)]
+pub struct TestCase {
+    /// The test function's name.
+    pub name: String,
+    /// Whether the function declares a return type. Assert-style tests
+    /// (no return type) are self-checking; a runner may not support
+    /// return-typed tests, since the annotation gives no expected output.
+    pub has_return: bool,
+    /// The function's evaluated annotation inputs, in parameter order.
+    pub inputs: Vec<TestCaseInput>,
+}
+
+/// One evaluated `@test` annotation input, e.g. `y = 3 * 3`.
+#[derive(Debug, Clone)]
+pub struct TestCaseInput {
+    /// The input's name (the `y` in `y = 3 * 3`).
+    pub name: String,
+    /// Whether the parameter this input binds to is public (`public` or no
+    /// visibility keyword) rather than `private`. In a proof, public inputs
+    /// are shared with the verifier; private inputs stay with the prover.
+    pub public: bool,
+    /// The input expression exactly as written in the source (`3 * 3`).
+    pub source: String,
+    /// The concrete value the expression evaluates to (`9`).
+    pub value: Value,
+}
+
 #[allow(dead_code)]
 fn const_value_simple(term: &Term) -> Option<Value> {
     match term.op() {
@@ -113,7 +149,227 @@ impl ZSharpCurlyFE {
         g.file_stack_push(file);
         g.generics_stack_push(HashMap::new());
         g.const_entry_fn(&entry, input_scalar_values)
+    }
+
+    /// Evaluate the `@test` annotation inputs of every test function in `file`.
+    ///
+    /// Each input expression (e.g. the `3 * 3` in `@test y = 3 * 3;`) is run
+    /// through the same const evaluator used for `const` definitions and
+    /// array sizes, yielding a concrete [Value]. Functions without `@test`
+    /// are skipped. Nothing is compiled, proven, or executed.
+    ///
+    /// Inputs are validated against the function's signature:
+    /// * every input must name a parameter, exactly once, and every
+    ///   parameter must receive an input;
+    /// * only scalar parameters (`field`, `bool`, `u8`..`u64`) are supported;
+    /// * unsuffixed literals are typed by the parameter they bind to (so
+    ///   `x = 2` for a `u32 x` is a `u32`), and the evaluated type must
+    ///   match the parameter's declared type;
+    /// * generic test functions are rejected.
+    ///
+    /// Known limits and semantics:
+    /// * The `Err` case covers annotation validation/evaluation only.
+    ///   Loading/parsing failures panic and some semantic failures exit the
+    ///   process, through pre-existing frontend paths — callers that must
+    ///   survive arbitrary files should `catch_unwind`.
+    /// * Parameter-directed literal typing does not descend into call
+    ///   arguments (`y = id(2)` for a `u32` fails; write `id(2u32)`), a
+    ///   limit of [ZConstLiteralRewriter].
+    /// * Annotation expressions have module-wide visibility: they are
+    ///   evaluated after all declarations are processed, so they may
+    ///   reference constants and functions declared later in the file.
+    pub fn eval_test_inputs(file: PathBuf, mode: Mode) -> Result<Vec<TestCase>, String> {
+        // Load and typecheck the file (and its imports), exactly like `check`.
+        // visit_files() also evaluates every `const` definition, so annotation
+        // inputs that name a constant can resolve it below.
+        let loader = parser::ZLoad::new();
+        let asts = loader.load(&file);
+        let mut g = ZGen::new(asts, mode, loader.stdlib(), cfg().zsharp.isolate_asserts);
+        g.visit_files();
+
+        // Enter the entry file's scope, like `interpret` does, so identifier
+        // lookups during evaluation know which file's constants and imports
+        // to search.
+        g.file_stack_push(file.clone());
+        g.generics_stack_push(HashMap::new());
+
+        let mut tests = Vec::new();
+        let ast = g
+            .asts
+            .get(&file)
+            .ok_or_else(|| format!("no AST loaded for {}", file.display()))?;
+        for decl in &ast.declarations {
+            // Only functions can be tests, and only those marked @test count.
+            let ast::SymbolDeclaration::Function(f) = decl else {
+                continue;
+            };
+            let Some(ann) = &f.test else {
+                continue;
+            };
+            tests.push(eval_test_case(&g, &file, f, ann)?);
+        }
+
+        g.generics_stack_pop();
+        g.file_stack_pop();
+        Ok(tests)
+    }
 }
+
+/// Validate one `@test` function's annotation against its signature and
+/// evaluate each input to a concrete value. See [ZSharpCurlyFE::eval_test_inputs]
+/// for the rules enforced here.
+///
+/// Errors are rendered to owned strings (path + offending source line)
+/// before returning, because AST spans borrow the loader's source text and
+/// cannot outlive `eval_test_inputs`.
+fn eval_test_case<'ast>(
+    g: &ZGen<'ast>,
+    file: &std::path::Path,
+    f: &ast::FunctionDefinition<'ast>,
+    ann: &ast::TestAnnotation<'ast>,
+) -> Result<TestCase, String> {
+    let diag = |msg: String, span: &ast::Span| {
+        format!(
+            "{}\nIn {}:\n  {}",
+            msg,
+            file.display(),
+            span_to_string(span)
+        )
+    };
+
+    // Generic test functions have no way to receive generic arguments from
+    // an annotation, so reject them outright.
+    if !f.generics.is_empty() {
+        return Err(diag(
+            format!("@test function {} cannot be generic", f.id.value),
+            &ann.span,
+        ));
+    }
+
+    // Index the annotation inputs by name, rejecting duplicates: collecting
+    // silently would keep only the last value for a repeated name.
+    let mut inputs_by_name = HashMap::new();
+    for input in &ann.inputs {
+        if inputs_by_name
+            .insert(input.name.value.as_str(), input)
+            .is_some()
+        {
+            return Err(diag(
+                format!(
+                    "duplicate @test input {} for {}",
+                    input.name.value, f.id.value
+                ),
+                &input.span,
+            ));
+        }
+    }
+
+    // Every input must name one of the function's parameters.
+    for input in &ann.inputs {
+        if !f.parameters.iter().any(|p| p.id.value == input.name.value) {
+            return Err(diag(
+                format!(
+                    "@test input {} does not match any parameter of {}",
+                    input.name.value, f.id.value
+                ),
+                &input.span,
+            ));
+        }
+    }
+
+    // Walk the parameters in signature order; each must be scalar and have
+    // exactly one input. This also fixes the output order to parameter order.
+    let mut inputs = Vec::new();
+    for p in &f.parameters {
+        // Resolve the declared type to a canonical Ty *first*, then apply the
+        // scalar restriction to that. Checking the AST syntax directly would
+        // wrongly reject scalar aliases (e.g. `type Word = u32`), which parse
+        // as a named type but resolve to Ty::Uint(32).
+        let ty = g
+            .type_impl_::<true>(&p.ty)
+            .map_err(|e| diag(e, type_span(&p.ty)))?;
+
+        // Scalar-only for now: compound inputs would additionally need to be
+        // flattened into per-leaf scalars ("x.0", "x.1", ...) to be usable by
+        // the interpreter (see interp::extract); reject them until then. This
+        // scalar set matches interp::extract's scalar leaves.
+        if !matches!(ty, Ty::Uint(_) | Ty::Field | Ty::Bool | Ty::Integer) {
+            return Err(diag(
+                format!(
+                    "parameter {} of @test function {} has a non-scalar type; \
+                     only field, bool, and u8..u64 parameters are supported",
+                    p.id.value, f.id.value
+                ),
+                &p.span,
+            ));
+        }
+
+        let input = inputs_by_name.remove(p.id.value.as_str()).ok_or_else(|| {
+            diag(
+                format!(
+                    "@test on {} is missing a value for parameter {}",
+                    f.id.value, p.id.value
+                ),
+                &ann.span,
+            )
+        })?;
+
+        // Type unsuffixed literals by the parameter they bind to, exactly as
+        // const_decl_ types them by the constant's declared type. Without
+        // this, `x = 2` would always evaluate as a field element, even for a
+        // u32 parameter.
+        let mut expr = input.value.clone();
+        let mut rw = ZConstLiteralRewriter::new(Some(ty.clone()));
+        rw.visit_expression(&mut expr)
+            .map_err(|e| diag(e.0, &input.span))?;
+
+        // The const evaluator: reduces the expression tree to a single
+        // constant term, or errors (with source context).
+        let t = g
+            .expr_impl_::<true>(&expr)
+            .map_err(|e| format!("{}\nIn {}", e, file.display()))?;
+
+        // The evaluated type must be exactly the parameter's type; the
+        // interpreter downstream trusts this and does not re-check.
+        if t.type_() != &ty {
+            return Err(diag(
+                format!(
+                    "@test input {} for {}: expected type {}, but {} evaluates to {}",
+                    input.name.value,
+                    f.id.value,
+                    ty,
+                    input.value.span().as_str(),
+                    t.type_()
+                ),
+                &input.span,
+            ));
+        }
+
+        // Pull the concrete Value out of the constant term.
+        let value = const_value_simple(&t.term).ok_or_else(|| {
+            diag(
+                format!(
+                    "@test input {} of {} did not evaluate to a constant",
+                    input.name.value, f.id.value
+                ),
+                &input.span,
+            )
+        })?;
+        inputs.push(TestCaseInput {
+            name: input.name.value.clone(),
+            // No visibility keyword defaults to public, matching
+            // interpret_visibility.
+            public: !matches!(p.visibility, Some(ast::Visibility::Private(_))),
+            source: input.value.span().as_str().to_string(),
+            value,
+        });
+    }
+
+    Ok(TestCase {
+        name: f.id.value.clone(),
+        has_return: f.return_type.is_some(),
+        inputs,
+    })
 }
 
 struct ZGen<'ast> {
