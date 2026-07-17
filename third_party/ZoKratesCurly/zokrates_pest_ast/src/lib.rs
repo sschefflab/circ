@@ -1626,6 +1626,32 @@ mod tests {
         let ann = f.test.as_ref().expect("should carry @test");
         assert_eq!(ann.inputs.len(), 2);
         assert_eq!(ann.inputs[0].name.value, "a");
+        assert_eq!(ann.inputs[0].value.span().as_str(), "3");
+
         assert_eq!(ann.inputs[1].name.value, "b");
+        assert_eq!(ann.inputs[1].value.span().as_str(), "3 * 3");
+    }
+    #[test]
+    fn parses_array_test_inputs() {
+        // The value slot is a full expression, so every array form parses:
+        // nested inline arrays, initializers, and spreads.
+        let source = r#"@test A = [[1, 0], [0, 1]], xs = [0; 4], ys = [...[1, 2], 3];
+        def test_arrays(private field[2][2] A, private field[4] xs, private field[3] ys) -> bool {
+            return true;
+        }
+"#;
+        let ast = generate_ast(source).unwrap();
+        let f = match &ast.declarations[0] {
+            SymbolDeclaration::Function(f) => f,
+            _ => panic!("expected a function"),
+        };
+        let ann = f.test.as_ref().expect("should carry @test");
+        assert_eq!(ann.inputs.len(), 3);
+        assert!(matches!(ann.inputs[0].value, Expression::InlineArray(_)));
+        assert!(matches!(
+            ann.inputs[1].value,
+            Expression::ArrayInitializer(_)
+        ));
+        assert!(matches!(ann.inputs[2].value, Expression::InlineArray(_)));
     }
 }

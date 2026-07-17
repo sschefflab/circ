@@ -2,19 +2,30 @@
 /// Reads a .zok file, finds every function marked with a @test annotation,
 /// evaluates its annotation inputs to concrete values, then runs each test
 /// through the full in-memory proof pipeline:
-///   compile (test fn as entry point) -> setup -> prove -> verify
-/// and prints ok / FAILED per test. A test passes when its assertions hold,
-/// i.e. when a proof can be produced and verifies (backend: Groth16 over
-/// BLS12-381, hardcoded for the MVP).
+///   compile (test fn as entry point) -> assert check -> setup -> prove -> verify
+/// and prints ok / FAILED per test. A test passes when its assertions
+/// evaluate to true on the given inputs (checked by direct IR evaluation —
+/// the proof pipeline alone can pass vacuously when optimization eliminates
+/// a private variable) AND a proof can be produced and verifies (backend:
+/// Groth16 over BLS12-381, hardcoded for the MVP).
+///
+/// Performance note: every array leaf is a distinct circuit input. For a
+/// *public* array all of its leaves are public inputs, so verification cost
+/// and verifying-key size grow linearly with the leaf count under Groth16;
+/// prefer testing large arrays as `private` witnesses and keeping `public`
+/// arrays to small expected values. (Visibility itself is a protocol choice,
+/// not a performance knob — this is just what it costs with this backend.)
+///
+/// The per-test execution logic lives in [`circ::test_runner`]; this file is
+/// the CLI wrapper.
 use bls12_381::Bls12;
 use circ::cfg::{clap, CircOpt};
-use circ::front::zsharpcurly::{Inputs, TestCase, ZSharpCurlyFE};
-use circ::front::{FrontEnd, Mode};
+use circ::front::zsharpcurly::ZSharpCurlyFE;
+use circ::front::Mode;
 use circ::ir::term::Value;
 use circ::target::r1cs::bellman::Bellman;
-use circ::target::r1cs::proof::ProofSystem;
+use circ::test_runner::{catch, run_test, Outcome};
 use clap::Parser;
-use fxhash::FxHashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -31,16 +42,6 @@ struct Options {
     circ: CircOpt,
 }
 
-/// The outcome of running one test.
-enum Outcome {
-    /// The proof verified: all assertions hold.
-    Pass,
-    /// Proving or verifying failed: an assertion does not hold.
-    Fail(String),
-    /// The test could not be run at all (e.g. unsupported shape).
-    Error(String),
-}
-
 /// Render a concrete Value as a plain number/bool, without the field
 /// modulus that Value's own Display appends (e.g. `9` instead of `#f9m524...`).
 fn pretty_value(v: &Value) -> String {
@@ -48,84 +49,16 @@ fn pretty_value(v: &Value) -> String {
         Value::Field(f) => f.i().to_string(),
         Value::BitVector(b) => b.uint().to_string(),
         Value::Bool(b) => b.to_string(),
-        // Anything else (arrays, tuples, ...): fall back to the default form.
+        Value::Array(a) => format!(
+            "[{}]",
+            a.values()
+                .iter()
+                .map(pretty_value)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        // Anything else (tuples, ...): fall back to the default form.
         other => other.to_string(),
-    }
-}
-
-/// Run `f`, catching panics and silencing the default panic hook only for
-/// the duration of the call (the frontend and the prover report failures by
-/// panicking). Returns the panic message on unwind.
-fn catch<R>(f: impl FnOnce() -> R) -> Result<R, String> {
-    let prev_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    std::panic::set_hook(prev_hook);
-    result.map_err(|e| {
-        if let Some(msg) = e.downcast_ref::<String>() {
-            msg.clone()
-        } else if let Some(msg) = e.downcast_ref::<&str>() {
-            (*msg).to_string()
-        } else {
-            "unknown panic".to_string()
-        }
-    })
-}
-
-/// Run one test through compile -> setup -> prove -> verify.
-fn run_test(path: &std::path::Path, test: &TestCase) -> Outcome {
-    // MVP supports assert-style tests only: a return-typed test computes a
-    // value, but the annotation gives no expected output to check it against.
-    if test.has_return {
-        return Outcome::Error(
-            "test functions with a return type are not supported (yet); \
-             drop the return type and use assert(...)"
-                .to_string(),
-        );
-    }
-
-    // Compile the test function as its own entry point and lower it to
-    // prover/verifier data. Compilation failures are errors, not test
-    // failures: the test never ran.
-    let name = test.name.clone();
-    let file = path.to_path_buf();
-    let setup = catch(move || {
-        let comps = ZSharpCurlyFE::gen(Inputs {
-            file,
-            entry: name.clone(),
-            mode: Mode::Proof,
-        });
-        let cs = comps.get(&name);
-        let (p_data, v_data, _stats) = circ::compile::to_proof_data(cs, circ::cfg::cfg());
-        Bellman::<Bls12>::setup(p_data, v_data)
-    });
-    let (pk, vk) = match setup {
-        Ok(keys) => keys,
-        Err(e) => return Outcome::Error(e),
-    };
-
-    // The prover knows every input; the verifier sees only the public ones.
-    let prover_map: FxHashMap<String, Value> = test
-        .inputs
-        .iter()
-        .map(|i| (i.name.clone(), i.value.clone()))
-        .collect();
-    let verifier_map: FxHashMap<String, Value> = test
-        .inputs
-        .iter()
-        .filter(|i| i.public)
-        .map(|i| (i.name.clone(), i.value.clone()))
-        .collect();
-
-    // Prove and verify. An assertion that does not hold makes the witness
-    // unsatisfiable, which the prover reports by panicking.
-    match catch(|| {
-        let pf = Bellman::<Bls12>::prove(&pk, &prover_map);
-        Bellman::<Bls12>::verify(&vk, &verifier_map, &pf)
-    }) {
-        Ok(true) => Outcome::Pass,
-        Ok(false) => Outcome::Fail("proof did not verify".to_string()),
-        Err(e) => Outcome::Fail(e),
     }
 }
 
@@ -168,42 +101,46 @@ fn main() {
         // Show each input as `name = <source> = <value>`, collapsing to
         // `name = <value>` when the source is already just the value.
         let inputs: Vec<String> = t
-            .inputs
+            .inputs()
             .iter()
             .map(|input| {
-                let value = pretty_value(&input.value);
-                if input.source == value {
-                    format!("{} = {}", input.name, value)
+                let value = pretty_value(input.value());
+                if input.source() == value {
+                    format!("{} = {}", input.name(), value)
                 } else {
-                    format!("{} = {} = {}", input.name, input.source, value)
+                    format!("{} = {} = {}", input.name(), input.source(), value)
                 }
             })
             .collect();
-        print!("test {} ({}) ... ", t.name, inputs.join(", "));
+        print!("test {} ({}) ... ", t.name(), inputs.join(", "));
         // Flush so the prover's own stderr diagnostics (printed when a
         // constraint fails) appear under this test's line, not before it.
         use std::io::Write;
         let _ = std::io::stdout().flush();
 
-        match run_test(&options.path, t) {
+        // Groth16 over BLS12-381 is hardcoded for the MVP; run_test is
+        // generic over the proof system, so this is the one place the backend
+        // is chosen.
+        let indent = |msg: String| {
+            // The prover's message spans several lines; indent them all.
+            for line in msg.lines() {
+                println!("    {}", line);
+            }
+        };
+        match run_test::<Bellman<Bls12>>(t) {
             Outcome::Pass => {
                 passed += 1;
                 println!("ok");
             }
-            Outcome::Fail(msg) => {
+            Outcome::AssertionFailed(msg) => {
                 failed += 1;
                 println!("FAILED");
-                // The prover's message spans several lines; indent them all.
-                for line in msg.lines() {
-                    println!("    {}", line);
-                }
+                indent(msg);
             }
-            Outcome::Error(msg) => {
+            Outcome::Unsupported(msg) | Outcome::CompileError(msg) | Outcome::BackendError(msg) => {
                 errored += 1;
                 println!("error");
-                for line in msg.lines() {
-                    println!("    {}", line);
-                }
+                indent(msg);
             }
         }
     }

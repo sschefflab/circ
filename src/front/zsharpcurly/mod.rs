@@ -18,7 +18,7 @@ use rug::Integer;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time;
 use zokrates_curly_pest_ast as ast;
@@ -48,31 +48,90 @@ pub struct Inputs {
 /// runner policy. In particular, return-typed test functions are
 /// discovered (see [Self::has_return]) and it is up to the runner to
 /// support or reject them.
+///
+/// Fields are private with read-only accessors: only
+/// [`ZSharpCurlyFE::eval_test_inputs`] (in-crate) constructs these, and
+/// external code cannot construct *or mutate* one, so downstream consumers
+/// (e.g. [`TestCaseInput::flat_entries`]) can trust the invariant holds.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TestCase {
+    name: String,
+    has_return: bool,
+    inputs: Vec<TestCaseInput>,
+    /// The source file this test was discovered in — used to recompile it as
+    /// an entry point, keeping the case bound to its origin.
+    file: PathBuf,
+}
+
+impl TestCase {
     /// The test function's name.
-    pub name: String,
+    pub fn name(&self) -> &str {
+        &self.name
+    }
     /// Whether the function declares a return type. Assert-style tests
     /// (no return type) are self-checking; a runner may not support
     /// return-typed tests, since the annotation gives no expected output.
-    pub has_return: bool,
+    pub fn has_return(&self) -> bool {
+        self.has_return
+    }
     /// The function's evaluated annotation inputs, in parameter order.
-    pub inputs: Vec<TestCaseInput>,
+    pub fn inputs(&self) -> &[TestCaseInput] {
+        &self.inputs
+    }
+    /// The source file this test was discovered in.
+    pub fn file(&self) -> &Path {
+        &self.file
+    }
 }
 
 /// One evaluated `@test` annotation input, e.g. `y = 3 * 3`.
+///
+/// Fields are private with read-only accessors; constructed only by the
+/// validated door ([`ZSharpCurlyFE::eval_test_inputs`]). External code can
+/// neither build nor mutate one, so [`Self::flat_entries`] can trust that
+/// [`Self::value`] is a scalar or an array of scalars.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TestCaseInput {
+    name: String,
+    public: bool,
+    source: String,
+    value: Value,
+}
+
+impl TestCaseInput {
     /// The input's name (the `y` in `y = 3 * 3`).
-    pub name: String,
+    pub fn name(&self) -> &str {
+        &self.name
+    }
     /// Whether the parameter this input binds to is public (`public` or no
     /// visibility keyword) rather than `private`. In a proof, public inputs
     /// are shared with the verifier; private inputs stay with the prover.
-    pub public: bool,
+    pub fn public(&self) -> bool {
+        self.public
+    }
     /// The input expression exactly as written in the source (`3 * 3`).
-    pub source: String,
-    /// The concrete value the expression evaluates to (`9`).
-    pub value: Value,
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+    /// The concrete value the expression evaluates to (`9`). Arrays are
+    /// stored whole, as a [Value::Array]; use [Self::flat_entries] to get
+    /// the per-leaf scalar entries the proof pipeline consumes.
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+
+    /// The flattened `(input-name, scalar-value)` entries this input
+    /// contributes to a proof-pipeline input map. A scalar maps to itself
+    /// under the bare parameter name; an array yields one entry per leaf
+    /// under dotted index names (`field[2][2] A` yields `A.0.0` ..
+    /// `A.1.1`), matching the circuit variables `declare_input` creates.
+    /// Each leaf becomes one circuit input; the parameter's visibility
+    /// (`public`) applies to all of its leaves.
+    pub fn flat_entries(&self) -> Vec<(String, Value)> {
+        interp::flatten(&self.name, &self.value)
+    }
 }
 
 #[allow(dead_code)]
@@ -161,10 +220,14 @@ impl ZSharpCurlyFE {
     /// Inputs are validated against the function's signature:
     /// * every input must name a parameter, exactly once, and every
     ///   parameter must receive an input;
-    /// * only scalar parameters (`field`, `bool`, `u8`..`u64`) are supported;
+    /// * parameters may be scalars (`field`, `bool`, `u8`..`u64`) or
+    ///   (possibly nested) arrays of scalars; structs, tuples, and
+    ///   zero-length arrays are rejected;
     /// * unsuffixed literals are typed by the parameter they bind to (so
-    ///   `x = 2` for a `u32 x` is a `u32`), and the evaluated type must
-    ///   match the parameter's declared type;
+    ///   `x = 2` for a `u32 x` is a `u32`, and `xs = [1, 2]` for a
+    ///   `u32[2] xs` types each element), and the evaluated type must
+    ///   match the parameter's declared type — for arrays this also checks
+    ///   length and element type;
     /// * generic test functions are rejected.
     ///
     /// Known limits and semantics:
@@ -212,6 +275,36 @@ impl ZSharpCurlyFE {
         g.generics_stack_pop();
         g.file_stack_pop();
         Ok(tests)
+    }
+}
+
+/// Is `ty` a scalar, or a (possibly nested) array whose base element is a
+/// scalar? These are the parameter types `@test` supports: their values
+/// flatten to the per-leaf scalar inputs the proof pipeline expects (see
+/// [TestCaseInput::flat_entries]). Exhaustive on purpose: a new `Ty`
+/// variant must decide whether it is supported.
+fn is_scalar_or_scalar_array(ty: &Ty) -> bool {
+    match ty {
+        Ty::Uint(_) | Ty::Field | Ty::Bool | Ty::Integer => true,
+        Ty::Array(_, elem) => is_scalar_or_scalar_array(elem),
+        Ty::MutArray(_) | Ty::Struct(..) | Ty::Tuple(..) => false,
+    }
+}
+
+/// Does `ty` contain a zero-length array dimension? Such an input would
+/// flatten to no circuit inputs at all — a silent no-op — so the door
+/// rejects it. `[]` values already fail const evaluation ("Empty array"),
+/// but `[0; 0]` would evaluate cleanly without this type-level guard.
+fn has_zero_length_array(ty: &Ty) -> bool {
+    match ty {
+        Ty::Array(n, elem) => *n == 0 || has_zero_length_array(elem),
+        Ty::Uint(_)
+        | Ty::Field
+        | Ty::Bool
+        | Ty::Integer
+        | Ty::MutArray(_)
+        | Ty::Struct(..)
+        | Ty::Tuple(..) => false,
     }
 }
 
@@ -289,16 +382,27 @@ fn eval_test_case<'ast>(
             .type_impl_::<true>(&p.ty)
             .map_err(|e| diag(e, type_span(&p.ty)))?;
 
-        // Scalar-only for now: compound inputs would additionally need to be
-        // flattened into per-leaf scalars ("x.0", "x.1", ...) to be usable by
-        // the interpreter (see interp::extract); reject them until then. This
-        // scalar set matches interp::extract's scalar leaves.
-        if !matches!(ty, Ty::Uint(_) | Ty::Field | Ty::Bool | Ty::Integer) {
+        // Scalars and arrays of scalars: array values are flattened into
+        // per-leaf scalar inputs ("A.0", "A.1.0", ...) by flat_entries — the
+        // same names declare_input and interp::extract use. Structs and
+        // tuples are not supported yet.
+        if !is_scalar_or_scalar_array(&ty) {
             return Err(diag(
                 format!(
-                    "parameter {} of @test function {} has a non-scalar type; \
-                     only field, bool, and u8..u64 parameters are supported",
-                    p.id.value, f.id.value
+                    "parameter {} of @test function {} has unsupported type {}; \
+                     only scalars (field, bool, u8..u64) and arrays of scalars \
+                     are supported",
+                    p.id.value, f.id.value, ty
+                ),
+                &p.span,
+            ));
+        }
+        if has_zero_length_array(&ty) {
+            return Err(diag(
+                format!(
+                    "parameter {} of @test function {} has a zero-length array \
+                     type {}; zero-length test inputs are not supported",
+                    p.id.value, f.id.value, ty
                 ),
                 &p.span,
             ));
@@ -369,6 +473,7 @@ fn eval_test_case<'ast>(
         name: f.id.value.clone(),
         has_return: f.return_type.is_some(),
         inputs,
+        file: file.to_path_buf(),
     })
 }
 
