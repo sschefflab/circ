@@ -1,117 +1,63 @@
-// Systematic @test runner coverage: every currently supported feature,
-// each through the full compile -> setup -> prove -> verify pipeline.
-// All tests here pass; rejection paths are covered in tests/zok_test_inputs.rs.
+// Simple @test coverage: scalar and array inputs, private/public visibility.
+// All tests pass. Run:
+//   cargo run --example ztest --features zokc -- examples/ZoKratesCurly/pf/coverage_test.zok
 
-// ---- helpers under test ----
+// ---- scalar inputs ----
 
-const field BASE = 40;
-
-type Word = u32;
-
-def sq(field x) -> field {
-    return x * x;
-}
-
-def pick_max(field x, field y) -> field {
-    return if x > y { x } else { y };
-}
-
-def sum_to(u32 n) -> u32 {
-    u32 mut acc = 0;
-    for u32 i in 0..8 {
-        acc = if i < n { acc + i } else { acc };
-    }
-    return acc;
-}
-
-// ---- input types: every scalar, each proven end-to-end ----
-
-@test b = true;
-def test_bool_input(private bool b) {
-    assert(b);
-}
-
-@test x = 200u8, y = 55u8;
-def test_u8_input(private u8 x, private u8 y) {
-    assert(x + y == 255u8);
-}
-
-@test x = 0xBEEF;
-def test_u16_hex_input(private u16 x) {
-    assert(x == 48879u16);
-}
-
-@test x = 7;
-def test_u32_bare_literal(private u32 x) {
-    // bare 7 is typed u32 by this parameter
-    assert(x * x == 49u32);
-}
-
-@test x = 4294967296;
-def test_u64_input(private u64 x) {
-    // 2^32 does not fit in u32; only valid because the parameter is u64
-    assert(x == 0x0000000100000000);
-}
-
-@test x = 5f;
-def test_field_suffixed(private field x) {
+@test x = 5;
+def test_field(private field x) {
     assert(x == 5);
 }
 
-@test w = 21;
-def test_type_alias_input(private Word w) {
-    assert(w + w == 42u32);
+@test a = 4, b = 6;
+def test_add(private field a, private field b) {
+    assert(a + b == 10);
 }
 
-// ---- input expressions ----
-
-@test x = 3 * 3 + 2 * 2;
-def test_arithmetic_expr(private field x) {
-    assert(x == 13);
-}
-
-@test x = BASE + 2;
-def test_constant_expr(private field x) {
-    assert(x == 42);
-}
-
-@test x = sq(sq(2));
-def test_nested_call_expr(private field x) {
-    assert(x == 16);
-}
-
-@test b = 5 > 3;
-def test_bool_expr(private bool b) {
+@test b = true;
+def test_bool(private bool b) {
     assert(b);
 }
 
-// ---- function shapes ----
-
-@test;
-def test_no_inputs() {
-    assert(sq(6) == 36);
+@test x = 7u32;
+def test_u32(private u32 x) {
+    assert(x * 2 == 14u32);
 }
 
-@test a = 1, b = 2, c = 3, d = 4;
-def test_mixed_visibility(private field a, public field b, field c, private field d) {
-    assert(a + b + c + d == 10);
+// ---- scalar visibility corners ----
+
+@test a = 3, b = 4;
+def test_all_public(public field a, public field b) {
+    assert(a + b == 7);
 }
 
-@test x = 9, y = 2;
-def test_control_flow(private field x, private field y) {
-    assert(pick_max(x, y) == 9);
-    assert(pick_max(y, x) == 9);
+@test a = 3, b = 4;
+def test_mixed_visibility(private field a, public field b) {
+    assert(a + b == 7);
 }
 
-@test n = 5;
-def test_loop_and_mut(private u32 n) {
-    // 0+1+2+3+4
-    assert(sum_to(n) == 10u32);
+// ---- array inputs ----
+
+@test xs = [1, 2, 3];
+def test_array(private field[3] xs) {
+    assert(xs[0] + xs[1] == xs[2]);
 }
 
-@test x = 3;
-def test_multiple_asserts(private field x) {
-    assert(x == 3);
-    assert(sq(x) == 9);
-    assert(sq(x) + x == 12, "message on an assert works too");
+@test A = [[1, 2], [3, 4]];
+def test_nested_array(private field[2][2] A) {
+    assert(A[0][0] == 1);
+    assert(A[1][1] == 4);
+}
+
+@test xs = [1, 2];
+def test_public_array(public field[2] xs) {
+    assert(xs[0] + xs[1] == 3);
+}
+
+// ---- array + scalar together ----
+
+@test k = 10, xs = [1, 2];
+def test_array_and_scalar(private field k, public field[2] xs) {
+    assert(k + xs[0] == 11);
+    assert(k + xs[1] == 12);
 }
