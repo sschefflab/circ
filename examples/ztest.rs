@@ -1,23 +1,22 @@
-/// Unit-test runner for ZoKratesCurly programs.
-/// Reads a .zok file, finds every function marked with a @test annotation,
-/// evaluates its annotation inputs to concrete values, then runs each test
-/// through the full in-memory proof pipeline:
-///   compile (test fn as entry point) -> assert check -> setup -> prove -> verify
-/// and prints ok / FAILED per test. A test passes when its assertions
-/// evaluate to true on the given inputs (checked by direct IR evaluation —
-/// the proof pipeline alone can pass vacuously when optimization eliminates
-/// a private variable) AND a proof can be produced and verifies (backend:
-/// Groth16 over BLS12-381, hardcoded for the MVP).
-///
-/// Performance note: every array leaf is a distinct circuit input. For a
-/// *public* array all of its leaves are public inputs, so verification cost
-/// and verifying-key size grow linearly with the leaf count under Groth16;
-/// prefer testing large arrays as `private` witnesses and keeping `public`
-/// arrays to small expected values. (Visibility itself is a protocol choice,
-/// not a performance knob — this is just what it costs with this backend.)
-///
-/// The per-test execution logic lives in [`circ::test_runner`]; this file is
-/// the CLI wrapper.
+//! Unit-test runner for ZoKratesCurly programs.
+//! Reads a .zok file, finds every function marked with a @test annotation,
+//! evaluates its annotation inputs to concrete values, then runs each test
+//! through the full in-memory proof pipeline:
+//!   compile (test fn as entry point) -> assert check -> setup -> prove -> verify
+//! and prints ok / FAILED per test. A test passes when its assertions
+//! evaluate to true on the given inputs (checked by direct IR evaluation —
+//! the proof pipeline alone can pass vacuously when optimization eliminates
+//! a private variable) AND a proof can be produced and verifies (backend:
+//! Groth16 over BLS12-381, hardcoded for the MVP).
+//!
+//! Performance note: every array leaf is a distinct circuit input. For a
+//! *public* array all of its leaves are public inputs, so verification cost
+//! and verifying-key size grow linearly with the leaf count under Groth16;
+//! prefer testing large arrays as `private` witnesses and keeping `public`
+//! arrays to small expected values.
+//!
+//! The per-test execution logic lives in [`circ::test_runner`]; this file is
+//! the CLI wrapper.
 use bls12_381::Bls12;
 use circ::cfg::{clap, CircOpt};
 use circ::front::zsharpcurly::ZSharpCurlyFE;
