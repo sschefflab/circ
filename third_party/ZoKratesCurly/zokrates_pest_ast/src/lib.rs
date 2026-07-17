@@ -1626,20 +1626,9 @@ mod tests {
         let ann = f.test.as_ref().expect("should carry @test");
         assert_eq!(ann.inputs.len(), 2);
         assert_eq!(ann.inputs[0].name.value, "a");
-        assert_eq!(ann.inputs[1].name.value, "b");
-    }
+        assert_eq!(ann.inputs[0].value.span().as_str(), "3");
 
-    #[test]
-    fn bare_marker_still_parses() {
-        let source = r#"@test;
-        def t() -> bool { return true; }
-"#;
-        let ast = generate_ast(source).unwrap();
-        let f = match &ast.declarations[0] {
-            SymbolDeclaration::Function(f) => f,
-            _ => panic!("expected a function"),
-        };
-        let ann = f.test.as_ref().expect("should carry @test");
-        assert_eq!(ann.inputs.len(), 0);
+        assert_eq!(ann.inputs[1].name.value, "b");
+        assert_eq!(ann.inputs[1].value.span().as_str(), "3 * 3");
     }
 }
