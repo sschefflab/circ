@@ -177,6 +177,11 @@ enum ZVis {
     Private(u8),
 }
 
+enum ArrayParamMetadata {
+    Committed,
+    Transcript,
+}
+
 impl<'ast> ZGen<'ast> {
     fn new(
         asts: HashMap<PathBuf, ast::File<'ast>>,
@@ -1067,10 +1072,22 @@ impl<'ast> ZGen<'ast> {
         for p in f.parameters.iter() {
             let ty = self.type_(&p.ty);
             debug!("Entry param: {}: {}", p.id.value, ty);
-            // XXX(unimpl) array metadata
+            let md = self.interpret_array_md(&p.array_metadata);
             let vis = self.interpret_visibility(&p.visibility);
             let r = self.circ_declare_input(p.id.value.clone(), &ty, vis, None, false);
-            self.unwrap(r, &p.span);
+            let input = self.unwrap(r, &p.span);
+            match md {
+                Some(ArrayParamMetadata::Transcript) => {
+                    self.mark_array_as_transcript(&p.id.value, input);
+                }
+                Some(ArrayParamMetadata::Committed) => {
+                    self.err(
+                        "committed (persistent) arrays are not yet supported by the zsharp-curly frontend",
+                        &p.span,
+                    );
+                }
+                None => {}
+            }
         }
         for s in &f.statements {
             self.unwrap(self.stmt_impl_::<false>(s), s.span());
@@ -1163,6 +1180,33 @@ impl<'ast> ZGen<'ast> {
             debug!("Assertion: {}", to_assert);
             self.circ.borrow_mut().assert(to_assert);
         }
+    }
+
+    fn interpret_array_md(
+        &self,
+        md: &Option<ast::ArrayParamMetadata<'ast>>,
+    ) -> Option<ArrayParamMetadata> {
+        match md {
+            Some(ast::ArrayParamMetadata::Committed(_)) => Some(ArrayParamMetadata::Committed),
+            Some(ast::ArrayParamMetadata::Transcript(_)) => Some(ArrayParamMetadata::Transcript),
+            None => None,
+        }
+    }
+
+    fn mark_array_as_transcript(&self, name: &str, array: T) {
+        info!(
+            "Transcript array {} of type {} in {:?}",
+            name,
+            array.ty,
+            self.file_stack.borrow().last().unwrap()
+        );
+        self.circ
+            .borrow()
+            .cir_ctx()
+            .cs
+            .borrow_mut()
+            .ram_arrays
+            .insert(array.term);
     }
 
     fn interpret_visibility(&self, visibility: &Option<ast::Visibility>) -> ZVis {
