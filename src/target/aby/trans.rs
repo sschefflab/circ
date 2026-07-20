@@ -865,7 +865,7 @@ impl<'a> ToABY<'a> {
             fs::remove_file(&bytecode_output_path).unwrap_or_else(|_| {
                 panic!(
                     "Failed to remove bytecode output: {}",
-                    &bytecode_output_path
+                    bytecode_output_path
                 )
             });
 
