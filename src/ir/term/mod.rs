@@ -2162,7 +2162,7 @@ impl Computation {
     /// Assert `s` in the system.
     pub fn assert(&mut self, s: Term) {
         assert!(check(&s) == Sort::Bool);
-        debug!("Assert: {}", &s.op());
+        debug!("Assert: {}", s.op());
         self.outputs.push(s);
     }
 
