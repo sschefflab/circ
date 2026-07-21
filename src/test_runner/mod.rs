@@ -1,20 +1,11 @@
-//! Executes one `@test` function end-to-end through the proof pipeline.
+//! Runs a ZoKrates `@test` through compilation and the proof pipeline.
 //!
-//! This is the reusable core behind the `ztest` example: compile the test
-//! function as its own entry point, check its assertions against the resolved
-//! inputs, then run the full `setup -> prove -> verify` cycle in memory.
-//!
-//! It sits *above* the frontend on purpose: the ZoKrates frontend produces
-//! validated test metadata ([`TestCase`]) and CirC IR; this module consumes
-//! that read-only API and orchestrates compilation ([`crate::compile`]) and
-//! the proof backend ([`crate::target::r1cs`]). The frontend does not depend
-//! back on it. It is generic over the proof system ([`ProofSystem`]) so the
-//! backend is chosen by the caller (the example instantiates Groth16 over
-//! BLS12-381). That generic covers the [`ProofSystem`] implementors — Bellman
-//! (Groth16) and Mirage — and is where their selection will plug in; Spartan
-//! uses a separate `SpartanProofSystem` interface (and a different field), so
-//! supporting it will take an adapter, not just a type argument. Presentation
-//! — printing, exit codes, input formatting — stays in the caller, not here.
+//! This module sits above the frontend, which provides validated [`TestCase`]
+//! metadata and CirC IR without depending on the runner. The runner pre-checks
+//! assertions and runs `setup -> prove -> verify` using a caller-selected
+//! [`ProofSystem`]. Bellman and Mirage implement this interface; `ztest` uses
+//! Bellman Groth16 over BLS12-381. Spartan uses a separate interface and is not
+//! supported here. CLI output remains in `ztest`.
 
 use crate::cfg::cfg;
 use crate::compile::{opt_for_proof, to_proof_data};
@@ -26,28 +17,22 @@ use fxhash::FxHashMap;
 use std::cell::Cell;
 use std::sync::Once;
 
-/// The outcome of running one test.
+/// Result of running one test.
 ///
-/// Semantic outcomes (the test's assertions were accepted or rejected) are
-/// kept distinct from infrastructure outcomes (the test could not be run, or a
-/// backend step failed). A future `expect = accept|reject` setting keys off
-/// [`Outcome::Pass`] / [`Outcome::AssertionFailed`] only — it must never treat
-/// a [`Outcome::CompileError`] or [`Outcome::BackendError`] as a rejection.
+/// Assertion failures are kept separate from unsupported tests and
+/// compile/backend errors, so execution failures are not treated as expected
+/// test rejections.
 #[derive(Debug)]
 pub enum Outcome {
-    /// Assertions held for the given inputs and the proof verified.
+    /// The assertion pre-check passed and the proof verified.
     Pass,
-    /// An assertion does not hold for the given inputs. This is the semantic
-    /// "the test rejected these inputs" signal.
+    /// The assertion pre-check failed.
     AssertionFailed(String),
-    /// The test's shape is not runnable (e.g. it declares a return type, which
-    /// carries no expected output to check).
+    /// The runner does not support this test shape.
     Unsupported(String),
-    /// The frontend, IR optimization, or R1CS lowering failed — the test could
-    /// not be turned into a circuit.
+    /// Frontend compilation, optimization, or R1CS lowering failed.
     CompileError(String),
-    /// The backend failed to set up, prove, or verify a test whose assertions
-    /// already held. This is an infrastructure failure, NOT a rejection.
+    /// Proof setup, proving, or verification failed.
     BackendError(String),
 }
 
@@ -152,13 +137,11 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         prover_map.extend(entries);
     }
 
-    // Ground truth: evaluate every assertion directly against the prover's
-    // inputs on the un-optimized IR. This is the authoritative pass/fail
-    // verdict. The proof pipeline alone is not sufficient — it proves "a
-    // satisfying witness exists", and when an optimization eliminates a private
-    // variable (e.g. reduce_linearities substituting away a purely linear
-    // assert like `x == 99`), the input-map value is never enforced and an
-    // untrue test would pass vacuously.
+    // Evaluate assertions against the supplied prover inputs on the unoptimized IR.
+    // Checking before optimization catches failures that could otherwise be hidden
+    // if an optimization removes a private input from the circuit. This is only a
+    // pre-check; challenge-dependent assertions must still be checked during
+    // proving.
     let held = catch(|| {
         comps
             .get(test.name())
@@ -194,9 +177,8 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         Err(e) => return Outcome::CompileError(e),
     };
 
-    // Backend setup, then prove + verify. The assertions already held under
-    // direct evaluation, so any failure from here on is a backend/infrastructure
-    // failure — reported as BackendError, never as an assertion rejection.
+    // Run backend setup, proving, and verification. Failures in this phase are
+    // reported as `BackendError`.
     let setup = catch(move || PS::setup(p_data, v_data));
     let (pk, vk) = match setup {
         Ok(keys) => keys,
@@ -207,9 +189,7 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         PS::verify(&vk, &verifier_map, &pf)
     }) {
         Ok(true) => Outcome::Pass,
-        Ok(false) => Outcome::BackendError(
-            "proof did not verify though assertions held for the given inputs".to_string(),
-        ),
+        Ok(false) => Outcome::BackendError("proof did not verify".to_string()),
         Err(e) => Outcome::BackendError(e),
     }
 }
