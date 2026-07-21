@@ -61,7 +61,7 @@ pub fn extract(
 /// ..., recursively (a `field[2][2]` named `A` yields `A.0.0` .. `A.1.1`).
 /// Ordering and naming mirror [extract] and `declare_input`.
 ///
-/// This is deliberately *value-only* and limited to indexed arrays:
+/// This is deliberately *value-only* and limited to arrays:
 /// [Array::values] handles sparse arrays (e.g. from `[0; 4]`, whose backing
 /// map is empty) by falling back to the array's default. Tuples and structs
 /// are not handled — a struct lowers to a [Value::Tuple], which no longer
