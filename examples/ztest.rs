@@ -9,12 +9,6 @@
 //! a private variable) AND a proof can be produced and verifies (backend:
 //! Groth16 over BLS12-381, hardcoded for the MVP).
 //!
-//! Performance note: every array leaf is a distinct circuit input. For a
-//! *public* array all of its leaves are public inputs, so verification cost
-//! and verifying-key size grow linearly with the leaf count under Groth16;
-//! prefer testing large arrays as `private` witnesses and keeping `public`
-//! arrays to small expected values.
-//!
 //! The per-test execution logic lives in [`circ::test_runner`]; this file is
 //! the CLI wrapper.
 use bls12_381::Bls12;
