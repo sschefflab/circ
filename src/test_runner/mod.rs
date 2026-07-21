@@ -70,6 +70,10 @@ fn install_quiet_hook() {
 /// later panics keep the normal hook. Cannot contain `process::exit` paths
 /// (some frontend semantic errors exit rather than unwind).
 ///
+/// TODO: Replace this panic-catching boundary with normal `Result` propagation
+/// once the frontend and prover return structured errors. This requires a
+/// broader error-handling refactor outside the current test-runner scope.
+///
 /// Exposed for callers that must also survive panics from the discovery phase
 /// (e.g. [`ZSharpCurlyFE::eval_test_inputs`] panics on a parse/load failure).
 pub fn catch<R>(f: impl FnOnce() -> R) -> Result<R, String> {
