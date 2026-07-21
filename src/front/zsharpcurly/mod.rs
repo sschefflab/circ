@@ -42,7 +42,7 @@ pub struct Inputs {
 /// A function marked `@test`, with its annotation inputs evaluated to
 /// concrete values.
 ///
-/// Contract: a `TestCase` guarantees its *inputs* are validated — names
+/// a `TestCase` guarantees its *inputs* are validated — names
 /// match parameters exactly, types are checked, values are constant. It
 /// does not decide whether the function's *shape* is runnable; that is
 /// runner policy. In particular, return-typed test functions are
