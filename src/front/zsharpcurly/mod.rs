@@ -228,7 +228,7 @@ impl ZSharpCurlyFE {
     ///   `u32[2] xs` types each element), and the evaluated type must
     ///   match the parameter's declared type — for arrays this also checks
     ///   length and element type;
-    /// * generic test functions are rejected.
+    /// * test functions parameterized with generics are rejected
     ///
     /// Known limits and semantics:
     /// * The `Err` case covers annotation validation/evaluation only.
