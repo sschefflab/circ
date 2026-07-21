@@ -292,8 +292,8 @@ fn is_scalar_or_scalar_array(ty: &Ty) -> bool {
 }
 
 /// Does `ty` contain a zero-length array dimension? Such an input would
-/// flatten to no circuit inputs at all — a silent no-op — so the door
-/// rejects it. `[]` values already fail const evaluation ("Empty array"),
+/// flatten to no circuit inputs at all, so it is rejected.
+///`[]` values already fail const evaluation ("Empty array"),
 /// but `[0; 0]` would evaluate cleanly without this type-level guard.
 fn has_zero_length_array(ty: &Ty) -> bool {
     match ty {
