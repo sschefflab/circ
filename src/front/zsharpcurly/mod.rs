@@ -39,25 +39,18 @@ pub struct Inputs {
     pub mode: Mode,
 }
 
-/// A function marked `@test`, with its annotation inputs evaluated to
-/// concrete values.
+/// A function marked `@test` with validated, evaluated inputs.
 ///
-/// a `TestCase` guarantees its *inputs* are validated — names
-/// match parameters exactly, types are checked, values are constant. It
-/// does not decide whether the function's *shape* is runnable; that is
-/// runner policy. In particular, return-typed test functions are
-/// discovered (see [Self::has_return]) and it is up to the runner to
-/// support or reject them.
+/// Input names and types must match the function parameters, and each input
+/// must evaluate to a constant. Return-typed tests are rejected before a
+/// `TestCase` is created.
 ///
-/// Fields are private with read-only accessors: only
-/// [`ZSharpCurlyFE::eval_test_inputs`] (in-crate) constructs these, and
-/// external code cannot construct *or mutate* one, so downstream consumers
-/// (e.g. [`TestCaseInput::flat_entries`]) can trust the invariant holds.
+/// Only [`ZSharpCurlyFE::eval_test_inputs`] creates `TestCase` values. Its
+/// private fields prevent callers from changing inputs after validation.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TestCase {
     name: String,
-    has_return: bool,
     inputs: Vec<TestCaseInput>,
     /// The source file this test was discovered in — used to recompile it as
     /// an entry point, keeping the case bound to its origin.
@@ -68,12 +61,6 @@ impl TestCase {
     /// The test function's name.
     pub fn name(&self) -> &str {
         &self.name
-    }
-    /// Whether the function declares a return type. Assert-style tests
-    /// (no return type) are self-checking; a runner may not support
-    /// return-typed tests, since the annotation gives no expected output.
-    pub fn has_return(&self) -> bool {
-        self.has_return
     }
     /// The function's evaluated annotation inputs, in parameter order.
     pub fn inputs(&self) -> &[TestCaseInput] {
@@ -338,6 +325,15 @@ fn eval_test_case<'ast>(
             &ann.span,
         ));
     }
+    if f.return_type.is_some() {
+    return Err(diag(
+        format!(
+            "@test function {} cannot declare a return type; use assert(...) instead",
+            f.id.value
+        ),
+        &ann.span,
+    ));
+    }
 
     // Index the annotation inputs by name, rejecting duplicates: collecting
     // silently would keep only the last value for a repeated name.
@@ -471,7 +467,6 @@ fn eval_test_case<'ast>(
 
     Ok(TestCase {
         name: f.id.value.clone(),
-        has_return: f.return_type.is_some(),
         inputs,
         file: file.to_path_buf(),
     })
