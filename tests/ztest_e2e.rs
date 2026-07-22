@@ -245,25 +245,3 @@ def test_linear(private field x) {
         outcome
     );
 }
-
-#[test]
-fn return_typed_test_is_unsupported() {
-    // A return-typed test is not runnable (no expected output to check); it is
-    // an infrastructure "Unsupported", not an assertion failure.
-    let (_guard, path) = write_file(
-        "return_typed",
-        r#"@test x = 3;
-def test_ret(private field x) -> field {
-    return x;
-}
-"#,
-    );
-    let tests = discover(&path);
-    assert_eq!(tests.len(), 1);
-    let outcome = run_test::<Bellman<Bls12>>(&tests[0]);
-    assert!(
-        matches!(outcome, Outcome::Unsupported(_)),
-        "got {:?}",
-        outcome
-    );
-}

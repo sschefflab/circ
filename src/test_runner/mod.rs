@@ -19,17 +19,14 @@ use std::sync::Once;
 
 /// Result of running one test.
 ///
-/// Assertion failures are kept separate from unsupported tests and
-/// compile/backend errors, so execution failures are not treated as expected
-/// test rejections.
+/// Assertion failures are kept separate from compile/backend errors, so
+/// execution failures are not treated as expected test rejections.
 #[derive(Debug)]
 pub enum Outcome {
     /// The assertion pre-check passed and the proof verified.
     Pass,
     /// The assertion pre-check failed.
     AssertionFailed(String),
-    /// The runner does not support this test shape.
-    Unsupported(String),
     /// Frontend compilation, optimization, or R1CS lowering failed.
     CompileError(String),
     /// Proof setup, proving, or verification failed.

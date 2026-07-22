@@ -130,7 +130,7 @@ fn main() {
                 println!("FAILED");
                 indent(msg);
             }
-            Outcome::Unsupported(msg) | Outcome::CompileError(msg) | Outcome::BackendError(msg) => {
+            Outcome::CompileError(msg) | Outcome::BackendError(msg) => {
                 errored += 1;
                 println!("error");
                 indent(msg);

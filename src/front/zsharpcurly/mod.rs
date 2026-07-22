@@ -326,13 +326,13 @@ fn eval_test_case<'ast>(
         ));
     }
     if f.return_type.is_some() {
-    return Err(diag(
-        format!(
-            "@test function {} cannot declare a return type; use assert(...) instead",
-            f.id.value
-        ),
-        &ann.span,
-    ));
+        return Err(diag(
+            format!(
+                "@test function {} cannot declare a return type; use assert(...) instead",
+                f.id.value
+            ),
+            &ann.span,
+        ));
     }
 
     // Index the annotation inputs by name, rejecting duplicates: collecting

@@ -108,8 +108,8 @@ fn constant_arithmetic_evaluates() {
     let tests = eval(
         "constant_arithmetic",
         r#"@test y = 3 * 3;
-def test_sq(private field y) -> field {
-    return y;
+def test_sq(private field y) {
+    assert(y == 9);
 }
 "#,
     )
@@ -129,8 +129,8 @@ fn named_constant_resolves() {
         r#"const field C = 7;
 
 @test x = C + 1;
-def test_c(private field x) -> field {
-    return x;
+def test_c(private field x) {
+    assert(x == 8);
 }
 "#,
     )
@@ -150,8 +150,8 @@ fn const_function_call_evaluates() {
 }
 
 @test y = sq(3);
-def test_sq(private field y) -> field {
-    return y;
+def test_sq(private field y) {
+    assert(y == 9);
 }
 "#,
     )
@@ -164,8 +164,8 @@ fn all_scalar_types_evaluate() {
     let tests = eval(
         "all_scalars",
         r#"@test b = true, n8 = 4u8, n16 = 4u16, n32 = 4u32, n64 = 4u64, f = 5f;
-def test_scalars(private bool b, private u8 n8, private u16 n16, private u32 n32, private u64 n64, private field f) -> bool {
-    return b;
+def test_scalars(private bool b, private u8 n8, private u16 n16, private u32 n32, private u64 n64, private field f) {
+    assert(b);
 }
 "#,
     )
@@ -187,8 +187,8 @@ fn unsuffixed_literal_typed_by_parameter() {
     let tests = eval(
         "unsuffixed_u32",
         r#"@test x = 2;
-def test_u(private u32 x) -> u32 {
-    return x;
+def test_u(private u32 x) {
+    assert(x == 2u32);
 }
 "#,
     )
@@ -201,8 +201,8 @@ fn bare_test_zero_params_ok() {
     let tests = eval(
         "bare_zero_params",
         r#"@test;
-def test_noargs() -> bool {
-    return true;
+def test_noargs() {
+    assert(true);
 }
 "#,
     )
@@ -216,8 +216,8 @@ fn bare_test_with_params_rejected() {
     let err = eval(
         "bare_with_params",
         r#"@test;
-def test_missing(private field x) -> field {
-    return x;
+def test_missing(private field x) {
+    assert(x == x);
 }
 "#,
     )
@@ -230,8 +230,8 @@ fn missing_input_rejected() {
     let err = eval(
         "missing_input",
         r#"@test a = 1;
-def test_two(private field a, private field b) -> field {
-    return a;
+def test_two(private field a, private field b) {
+    assert(a == a);
 }
 "#,
     )
@@ -244,8 +244,8 @@ fn unknown_input_rejected() {
     let err = eval(
         "unknown_input",
         r#"@test a = 1, nope = 2;
-def test_one(private field a) -> field {
-    return a;
+def test_one(private field a) {
+    assert(a == a);
 }
 "#,
     )
@@ -258,8 +258,8 @@ fn duplicate_input_rejected() {
     let err = eval(
         "duplicate_input",
         r#"@test a = 1, a = 2;
-def test_dup(private field a) -> field {
-    return a;
+def test_dup(private field a) {
+    assert(a == a);
 }
 "#,
     )
@@ -272,8 +272,8 @@ fn non_constant_expression_rejected() {
     let err = eval(
         "non_constant",
         r#"@test x = undefined_thing;
-def test_bad(private field x) -> field {
-    return x;
+def test_bad(private field x) {
+    assert(x == x);
 }
 "#,
     )
@@ -647,8 +647,8 @@ fn scalar_type_alias_accepted() {
         r#"type Word = u32;
 
 @test x = 2;
-def test_alias(private Word x) -> Word {
-    return x;
+def test_alias(private Word x) {
+    assert(x == 2u32);
 }
 "#,
     )
@@ -661,8 +661,8 @@ fn generic_test_function_rejected() {
     let err = eval(
         "generic_fn",
         r#"@test x = 1;
-def test_gen<N>(private field x) -> field {
-    return x;
+def test_gen<N>(private field x) {
+    assert(x == x);
 }
 "#,
     )
@@ -677,8 +677,8 @@ fn type_mismatch_rejected() {
     let err = eval(
         "type_mismatch",
         r#"@test x = true;
-def test_ty(private field x) -> field {
-    return x;
+def test_ty(private field x) {
+    assert(x == x);
 }
 "#,
     )
@@ -753,8 +753,8 @@ fn inputs_returned_in_parameter_order() {
     let tests = eval(
         "param_order",
         r#"@test b = 2, a = 1;
-def test_order(private field a, private field b) -> field {
-    return a;
+def test_order(private field a, private field b) {
+    assert(a == 1);
 }
 "#,
     )
@@ -785,28 +785,17 @@ def test_vis(private field a, public field b, field c) {
 }
 
 #[test]
-fn has_return_exposed() {
-    // Runners use this to tell self-checking assert-style tests (no return
-    // type) from return-typed ones (unsupported in the MVP).
-    let tests = eval(
-        "has_return",
-        r#"@test x = 1;
-def test_assert_style(private field x) {
-    assert(x == 1);
-}
-
-@test y = 2;
+fn return_typed_test_rejected() {
+    let err = eval(
+        "return_typed",
+        r#"@test y = 2;
 def test_return_style(private field y) -> field {
     return y;
 }
 "#,
     )
-    .unwrap();
-    assert!(
-        !tests[0].has_return(),
-        "assert-style test has no return type"
-    );
-    assert!(tests[1].has_return(), "return-typed test is flagged");
+    .unwrap_err();
+    assert!(err.contains("cannot declare a return type"), "{}", err);
 }
 
 #[test]
@@ -818,8 +807,8 @@ fn plain_functions_skipped() {
 }
 
 @test x = 1;
-def test_only(private field x) -> field {
-    return x;
+def test_only(private field x) {
+    assert(x == 1);
 }
 "#,
     )
