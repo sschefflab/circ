@@ -92,9 +92,8 @@ impl TestCaseInput {
     pub fn name(&self) -> &str {
         &self.name
     }
-    /// Whether the parameter this input binds to is public (`public` or no
-    /// visibility keyword) rather than `private`. In a proof, public inputs
-    /// are shared with the verifier; private inputs stay with the prover.
+    /// Whether the input is public. Parameters without a visibility keyword
+    /// are public by default.
     pub fn public(&self) -> bool {
         self.public
     }
@@ -109,13 +108,11 @@ impl TestCaseInput {
         &self.value
     }
 
-    /// The flattened `(input-name, scalar-value)` entries this input
-    /// contributes to a proof-pipeline input map. A scalar maps to itself
-    /// under the bare parameter name; an array yields one entry per leaf
-    /// under dotted index names (`field[2][2] A` yields `A.0.0` ..
-    /// `A.1.1`), matching the circuit variables `declare_input` creates.
-    /// Each leaf becomes one circuit input; the parameter's visibility
-    /// (`public`) applies to all of its leaves.
+    /// Returns the scalar entries used by the proof pipeline.
+    ///
+    /// Scalars keep their parameter name. Array elements use dotted names, so
+    /// `field[2][2] A` becomes `A.0.0` through `A.1.1`. The parameter's
+    /// visibility applies to every array element.
     pub fn flat_entries(&self) -> Vec<(String, Value)> {
         interp::flatten(&self.name, &self.value)
     }
@@ -197,37 +194,15 @@ impl ZSharpCurlyFE {
         g.const_entry_fn(&entry, input_scalar_values)
     }
 
-    /// Evaluate the `@test` annotation inputs of every test function in `file`.
+    /// Finds every `@test` function in `file` and evaluates its inputs.
     ///
-    /// Each input expression (e.g. the `3 * 3` in `@test y = 3 * 3;`) is run
-    /// through the same const evaluator used for `const` definitions and
-    /// array sizes, yielding a concrete [Value]. Functions without `@test`
-    /// are skipped. Nothing is compiled, proven, or executed.
+    /// Inputs must match the function parameters by name and type and evaluate to
+    /// constants. Scalars and nested scalar arrays are supported. Generic and
+    /// return-typed test functions are rejected. Functions without `@test` are
+    /// ignored. This method discovers tests but does not run them.
     ///
-    /// Inputs are validated against the function's signature:
-    /// * every input must name a parameter, exactly once, and every
-    ///   parameter must receive an input;
-    /// * parameters may be scalars (`field`, `bool`, `u8`..`u64`) or
-    ///   (possibly nested) arrays of scalars; structs, tuples, and
-    ///   zero-length arrays are rejected;
-    /// * unsuffixed literals are typed by the parameter they bind to (so
-    ///   `x = 2` for a `u32 x` is a `u32`, and `xs = [1, 2]` for a
-    ///   `u32[2] xs` types each element), and the evaluated type must
-    ///   match the parameter's declared type — for arrays this also checks
-    ///   length and element type;
-    /// * test functions parameterized with generics are rejected
-    ///
-    /// Known limits and semantics:
-    /// * The `Err` case covers annotation validation/evaluation only.
-    ///   Loading/parsing failures panic and some semantic failures exit the
-    ///   process, through pre-existing frontend paths — callers that must
-    ///   survive arbitrary files should `catch_unwind`.
-    /// * Parameter-directed literal typing does not descend into call
-    ///   arguments (`y = id(2)` for a `u32` fails; write `id(2u32)`), a
-    ///   limit of [ZConstLiteralRewriter].
-    /// * Annotation expressions have module-wide visibility: they are
-    ///   evaluated after all declarations are processed, so they may
-    ///   reference constants and functions declared later in the file.
+    /// `Err` only represents annotation errors; existing parser/frontend errors
+    /// may still panic or exit.
     pub fn eval_test_inputs(file: PathBuf, mode: Mode) -> Result<Vec<TestCase>, String> {
         // Load and typecheck the file (and its imports), exactly like `check`.
         // visit_files() also evaluates every `const` definition, so annotation
@@ -265,11 +240,7 @@ impl ZSharpCurlyFE {
     }
 }
 
-/// Is `ty` a scalar, or a (possibly nested) array whose base element is a
-/// scalar? These are the parameter types `@test` supports: their values
-/// flatten to the per-leaf scalar inputs the proof pipeline expects (see
-/// [TestCaseInput::flat_entries]). Exhaustive on purpose: a new `Ty`
-/// variant must decide whether it is supported.
+/// Returns true for scalars and nested arrays of scalars supported by `@test`.
 fn is_scalar_or_scalar_array(ty: &Ty) -> bool {
     match ty {
         Ty::Uint(_) | Ty::Field | Ty::Bool | Ty::Integer => true,
@@ -278,10 +249,10 @@ fn is_scalar_or_scalar_array(ty: &Ty) -> bool {
     }
 }
 
-/// Does `ty` contain a zero-length array dimension? Such an input would
-/// flatten to no circuit inputs at all, so it is rejected.
-///`[]` values already fail const evaluation ("Empty array"),
-/// but `[0; 0]` would evaluate cleanly without this type-level guard.
+/// Returns true if any array dimension is zero.
+///
+/// `[0; 0]` evaluates successfully but produces no circuit inputs, so it must
+/// be rejected separately.
 fn has_zero_length_array(ty: &Ty) -> bool {
     match ty {
         Ty::Array(n, elem) => *n == 0 || has_zero_length_array(elem),
