@@ -157,11 +157,7 @@ pub fn walk_function_definition<'ast, Z: ZVisitorMut<'ast>>(
     visitor: &mut Z,
     fundef: &mut ast::FunctionDefinition<'ast>,
 ) -> ZVisitorResult {
-    // Note: typing annotation inputs requires the function's parameter
-    // types, which a generic visitor does not know; that is done with a
-    // per-parameter type hint in eval_test_case (mod.rs). The structural
-    // walk here still covers the annotation so that visitors (identifier
-    // collection, rewriting, linting, ...) see every AST child.
+    // Visit the @test annotation when the function has one.
     if let Some(t) = fundef.test.as_mut() {
         visitor.visit_test_annotation(t)?;
     }
