@@ -1,8 +1,5 @@
-//! Runs a ZoKrates `@test` through compilation and the proof pipeline.
-//!
-//! This module sits above the frontend, which provides validated [`TestCase`]
-//! metadata and CirC IR without depending on the runner. The runner pre-checks
-//! assertions and runs `setup -> prove -> verify` using a caller-selected
+//! Runs a ZoKrates `@test` through compilation, assertion checking, setup,
+//! proving, and verification.
 //! [`ProofSystem`]. Bellman and Mirage implement this interface; `ztest` uses
 //! Bellman Groth16 over BLS12-381. Spartan uses a separate interface and is not
 //! supported here. CLI output remains in `ztest`.
@@ -41,13 +38,9 @@ thread_local! {
 
 static HOOK_INIT: Once = Once::new();
 
-/// Install, once per process, a panic hook that defers to the previous hook
-/// except while the current thread is inside [catch]. Swapping the global hook
-/// per call (take/quiet/restore) races under concurrency — two overlapping
-/// calls can restore in the wrong order and leave the quiet hook installed for
-/// good, or suppress an unrelated thread's panic. A thread-local flag consulted
-/// by one installed-once hook avoids both: suppression is per-thread and the
-/// global hook is never swapped after startup.
+/// Installs one panic hook that uses a thread-local flag to silence panics
+/// caught by [`catch`]. Installing it once avoids races from replacing the
+/// global hook on every call.
 fn install_quiet_hook() {
     HOOK_INIT.call_once(|| {
         let prev = std::panic::take_hook();
@@ -89,12 +82,10 @@ pub fn catch<R>(f: impl FnOnce() -> R) -> Result<R, String> {
     })
 }
 
-/// Run one `@test` function through compile -> assert check -> setup -> prove
-/// -> verify, using the proof system `PS`.
+/// Runs one `@test` using the proof system `PS`.
 ///
 /// The test is recompiled from its own source file ([`TestCase::file`]), so the
-/// case stays bound to the file it was discovered in — the caller cannot pair a
-/// case with an unrelated path. The config is read from the process-global
+/// case stays bound to the file it was discovered in. The config is read from the process-global
 /// [`cfg`]; the caller must have set it (via `circ::cfg::set` or `set_default`)
 /// and it fixes the field/backend for the process.
 pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
@@ -113,11 +104,7 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         Err(e) => return Outcome::CompileError(e),
     };
 
-    // Build the prover and verifier input maps in a single pass over the
-    // inputs — one flatten per input, not one per map. The prover knows every
-    // input; the verifier sees only the public ones. Arrays flatten to one
-    // entry per leaf ("A.0.0", ...), the names the compiled circuit declares
-    // its input variables under; scalars are a single bare-named entry.
+    /// Give the prover all inputs and the verifier only public inputs.
     let mut prover_map: FxHashMap<String, Value> = FxHashMap::default();
     let mut verifier_map: FxHashMap<String, Value> = FxHashMap::default();
     for input in test.inputs() {
@@ -128,11 +115,8 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         prover_map.extend(entries);
     }
 
-    // Evaluate assertions against the supplied prover inputs on the unoptimized IR.
-    // Checking before optimization catches failures that could otherwise be hidden
-    // if an optimization removes a private input from the circuit. This is only a
-    // pre-check; challenge-dependent assertions must still be checked during
-    // proving.
+    // Check assertions before optimization so removing a private input cannot hide
+    // a failure. Challenge-dependent assertions are still checked during proving.
     let held = catch(|| {
         comps
             .get(test.name())
