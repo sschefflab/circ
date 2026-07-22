@@ -1,12 +1,9 @@
-//! End-to-end coverage of the `@test` runner: `eval_test_inputs` (discovery +
-//! input evaluation) followed by `circ::test_runner::run_test` (compile ->
-//! assert check -> setup -> prove -> verify through Groth16/BLS12-381). This is the
-//! path the `ztest` example exercises; `tests/zok_test_inputs.rs` stops at
-//! input evaluation, so without this file a regression in flattening, the IR
-//! optimization pipeline, R1CS lowering, or the outcome semantics could merge
-//! with every registered test green.
+//! End-to-end tests for the `@test` runner using Groth16/BLS12-381.
 //!
-//! Assertions are on the structured `Outcome`, not on printed text.
+//! `zok_test_inputs.rs` stops after discovery and input evaluation. These tests
+//! continue through array flattening, compilation, assertion checking, IR
+//! optimization, R1CS lowering, setup, proving, and verification. They check
+//! the structured [`Outcome`] rather than CLI output.
 
 #![cfg(all(feature = "smt", feature = "zokc", feature = "bellman"))]
 
