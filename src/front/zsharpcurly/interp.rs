@@ -54,22 +54,17 @@ pub fn extract(
     }
 }
 
-/// Inverse of [extract] for the value shapes `@test` supports: break a
-/// constant [Value] into the flattened per-leaf scalar entries the proof
-/// pipeline uses in input maps. A scalar yields a single (`name`, value)
-/// entry; an array yields one entry per element under `name.0`, `name.1`,
-/// ..., recursively (a `field[2][2]` named `A` yields `A.0.0` .. `A.1.1`).
-/// Ordering and naming mirror [extract] and `declare_input`.
+/// Converts a scalar or array test input into the named scalar values expected
+/// by the proof pipeline.
 ///
-/// This is deliberately *value-only* and limited to arrays:
-/// [Array::values] handles sparse arrays (e.g. from `[0; 4]`, whose backing
-/// map is empty) by falling back to the array's default. Tuples and structs
-/// are not handled — a struct lowers to a [Value::Tuple], which no longer
-/// carries the field names `name.field` flattening would need; supporting
-/// them will need the resolved [Ty], not just the value. `eval_test_case`
-/// rejects those parameter types (and every non-scalar leaf kind) before one
-/// can reach here, so the leaf arms below are exhaustive for validated
-/// inputs; anything else is an internal invariant violation.
+/// This reverses [`extract`]. Scalars keep their names, while array elements
+/// use dotted indices. For example, a `field[2][2]` named `A` becomes
+/// `A.0.0`, `A.0.1`, `A.1.0`, and `A.1.1`.
+///
+/// [`Array::values`] expands repeated arrays such as `[0; 4]`.
+///
+/// Tuples and structs are not supported. `eval_test_case` rejects them before
+/// the inputs reach this function.
 pub fn flatten(name: &str, value: &Value) -> Vec<(String, Value)> {
     match value {
         Value::Array(arr) => arr
