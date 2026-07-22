@@ -101,16 +101,6 @@ pub fn catch<R>(f: impl FnOnce() -> R) -> Result<R, String> {
 /// [`cfg`]; the caller must have set it (via `circ::cfg::set` or `set_default`)
 /// and it fixes the field/backend for the process.
 pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
-    // Assert-style tests only: a return-typed test computes a value, but the
-    // annotation gives no expected output to check it against.
-    if test.has_return() {
-        return Outcome::Unsupported(
-            "test functions with a return type are not supported (yet); \
-             drop the return type and use assert(...)"
-                .to_string(),
-        );
-    }
-
     // Compile the test function as its own entry point, from the file it was
     // discovered in. A failure here means the test never became a circuit.
     let name = test.name().to_string();
