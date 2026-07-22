@@ -10,16 +10,10 @@ use crate::target::r1cs::opt::reduce_linearities;
 use crate::target::r1cs::trans::to_r1cs;
 use crate::target::r1cs::{ProverData, R1csStats, VerifierData};
 
-/// Run the canonical proof-mode IR optimization pipeline on a set of
-/// [`Computations`].
+/// Runs the proof-mode optimizations shared by the CLI and test runner.
 ///
-/// This is the single owner of the pass list the CLI driver (`examples/circ.rs`
-/// `Mode::Proof`) and the unit-test runner both use, so they cannot drift. The
-/// passes are backend-independent (Groth16, Mirage, and Spartan all consume the
-/// same optimized IR); the only configurable input is
-/// [`cfg.ir.fits_in_bits_ip`](crate::cfg). This must run before [`to_proof_data`]:
-/// R1CS lowering embeds scalar sorts only, so array/tuple terms have to be
-/// scalarized and eliminated here first.
+/// This must run before [`to_proof_data`] to remove arrays and tuples because
+/// the R1CS lowering step accepts only scalar values.
 pub fn opt_for_proof(cs: Computations, cfg: &CircCfg) -> Computations {
     let mut opts = vec![
         Opt::ConstantFold(Box::new([])),
