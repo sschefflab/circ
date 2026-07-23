@@ -77,7 +77,7 @@ impl TestCase {
 /// Fields are private with read-only accessors; constructed only by the
 /// validated door ([`ZSharpCurlyFE::eval_test_inputs`]). External code can
 /// neither build nor mutate one, so [`Self::flat_entries`] can trust that
-/// [`Self::value`] is a scalar or an array of scalars.
+/// [`Self::value`] is a supported scalar, array, or tuple.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TestCaseInput {
@@ -101,18 +101,17 @@ impl TestCaseInput {
     pub fn source(&self) -> &str {
         &self.source
     }
-    /// The concrete value the expression evaluates to (`9`). Arrays are
-    /// stored whole, as a [Value::Array]; use [Self::flat_entries] to get
-    /// the per-leaf scalar entries the proof pipeline consumes.
+    /// The concrete value the expression evaluates to (`9`). Arrays and tuples
+    /// are stored whole; use [`Self::flat_entries`] to get their scalar entries.
     pub fn value(&self) -> &Value {
         &self.value
     }
 
     /// Returns the scalar entries used by the proof pipeline.
     ///
-    /// Scalars keep their parameter name. Array elements use dotted names, so
-    /// `field[2][2] A` becomes `A.0.0` through `A.1.1`. The parameter's
-    /// visibility applies to every array element.
+    /// Scalars keep their parameter name. Array and tuple elements use dotted
+    /// indices, such as `A.0.0` or `t.1`. The parameter's visibility applies
+    /// to every element.
     pub fn flat_entries(&self) -> Vec<(String, Value)> {
         interp::flatten(&self.name, &self.value)
     }
@@ -197,9 +196,10 @@ impl ZSharpCurlyFE {
     /// Finds every `@test` function in `file` and evaluates its inputs.
     ///
     /// Inputs must match the function parameters by name and type and evaluate to
-    /// constants. Scalars and nested scalar arrays are supported. Generic and
-    /// return-typed test functions are rejected. Functions without `@test` are
-    /// ignored. This method discovers tests but does not run them.
+    /// constants. Scalars, nested arrays, and tuples composed of those types are
+    /// supported. Generic and return-typed test functions are rejected. Functions
+    /// without `@test` are ignored. This method discovers tests but does not run
+    /// them.
     ///
     /// `Err` only represents annotation errors; existing parser/frontend errors
     /// may still panic or exit.
@@ -240,29 +240,26 @@ impl ZSharpCurlyFE {
     }
 }
 
-/// Returns true for scalars and nested arrays of scalars supported by `@test`.
-fn is_scalar_or_scalar_array(ty: &Ty) -> bool {
+/// Returns true for scalar, array, and tuple inputs supported by `@test`.
+fn is_supported_test_input_type(ty: &Ty) -> bool {
     match ty {
         Ty::Uint(_) | Ty::Field | Ty::Bool | Ty::Integer => true,
-        Ty::Array(_, elem) => is_scalar_or_scalar_array(elem),
-        Ty::MutArray(_) | Ty::Struct(..) | Ty::Tuple(..) => false,
+        Ty::Array(_, elem) => is_supported_test_input_type(elem),
+        Ty::Tuple(elements) => elements.iter().all(is_supported_test_input_type),
+        Ty::MutArray(_) | Ty::Struct(..) => false,
     }
 }
 
-/// Returns true if any array dimension is zero.
+/// Returns true if an array or tuple input contains no values.
 ///
-/// `[0; 0]` evaluates successfully but produces no circuit inputs, so it must
-/// be rejected separately.
-fn has_zero_length_array(ty: &Ty) -> bool {
+/// Empty inputs produce no circuit inputs, so they are rejected separately.
+fn has_empty_test_input(ty: &Ty) -> bool {
     match ty {
-        Ty::Array(n, elem) => *n == 0 || has_zero_length_array(elem),
-        Ty::Uint(_)
-        | Ty::Field
-        | Ty::Bool
-        | Ty::Integer
-        | Ty::MutArray(_)
-        | Ty::Struct(..)
-        | Ty::Tuple(..) => false,
+        Ty::Array(n, elem) => *n == 0 || has_empty_test_input(elem),
+        Ty::Tuple(elements) => elements.is_empty() || elements.iter().any(has_empty_test_input),
+        Ty::Uint(_) | Ty::Field | Ty::Bool | Ty::Integer | Ty::MutArray(_) | Ty::Struct(..) => {
+            false
+        }
     }
 }
 
@@ -349,26 +346,22 @@ fn eval_test_case<'ast>(
             .type_impl_::<true>(&p.ty)
             .map_err(|e| diag(e, type_span(&p.ty)))?;
 
-        // Scalars and arrays of scalars: array values are flattened into
-        // per-leaf scalar inputs ("A.0", "A.1.0", ...) by flat_entries — the
-        // same names declare_input and interp::extract use. Structs and
-        // tuples are not supported yet.
-        if !is_scalar_or_scalar_array(&ty) {
+        if !is_supported_test_input_type(&ty) {
             return Err(diag(
                 format!(
                     "parameter {} of @test function {} has unsupported type {}; \
-                     only scalars (field, bool, u8..u64) and arrays of scalars \
-                     are supported",
+                     only scalars (field, bool, u8..u64), arrays, and tuples \
+                     composed of those types are supported",
                     p.id.value, f.id.value, ty
                 ),
                 &p.span,
             ));
         }
-        if has_zero_length_array(&ty) {
+        if has_empty_test_input(&ty) {
             return Err(diag(
                 format!(
-                    "parameter {} of @test function {} has a zero-length array \
-                     type {}; zero-length test inputs are not supported",
+                    "parameter {} of @test function {} has an empty array or tuple \
+                     in type {}; empty test inputs are not supported",
                     p.id.value, f.id.value, ty
                 ),
                 &p.span,

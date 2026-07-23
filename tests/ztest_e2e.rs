@@ -1,7 +1,7 @@
 //! End-to-end tests for the `@test` runner using Groth16/BLS12-381.
 //!
 //! `zok_test_inputs.rs` stops after discovery and input evaluation. These tests
-//! continue through array flattening, compilation, assertion checking, IR
+//! continue through input flattening, compilation, assertion checking, IR
 //! optimization, R1CS lowering, setup, proving, and verification. They check
 //! the structured [`Outcome`] rather than CLI output.
 
@@ -66,6 +66,59 @@ fn nested_array_passes_full_pipeline() {
 def test_mat(private field[2][2] A) {
     assert(A[0][0] == 1);
     assert(A[1][1] == 4);
+}
+"#,
+    );
+    assert!(matches!(outcome, Outcome::Pass), "got {:?}", outcome);
+}
+
+#[test]
+fn nested_tuple_passes_full_pipeline() {
+    let outcome = run_only(
+        "nested_tuple",
+        r#"@test t = ([1, 2], (true, 3));
+def test_tuple(private (field[2], (bool, u32)) t) {
+    assert(t.0[0] == 1);
+    assert(t.0[1] == 2);
+    assert(t.1.0);
+    assert(t.1.1 == 3u32);
+}
+"#,
+    );
+    assert!(matches!(outcome, Outcome::Pass), "got {:?}", outcome);
+}
+
+#[test]
+fn false_private_tuple_assertion_is_assertion_failure() {
+    // Linear, all-private: the class of assert that optimization can
+    // eliminate (the vacuous-pass hazard) — must FAIL, not pass, for tuple
+    // inputs just as for scalars and arrays.
+    let outcome = run_only(
+        "false_private_tuple",
+        r#"@test t = (4, true);
+def test_tuple(private (field, bool) t) {
+    assert(t.0 == 99);
+    assert(t.1);
+}
+"#,
+    );
+    assert!(
+        matches!(outcome, Outcome::AssertionFailed(_)),
+        "got {:?}",
+        outcome
+    );
+}
+
+#[test]
+fn public_tuple_passes() {
+    // No visibility keyword = public: every tuple leaf goes into the
+    // verifier map too.
+    let outcome = run_only(
+        "public_tuple",
+        r#"@test t = (7, 9);
+def test_tuple((field, u32) t) {
+    assert(t.0 == 7);
+    assert(t.1 == 9u32);
 }
 "#,
     );

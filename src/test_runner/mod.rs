@@ -1,8 +1,9 @@
 //! Runs a ZoKrates `@test` through compilation, assertion checking, setup,
 //! proving, and verification.
-//! [`ProofSystem`]. Bellman and Mirage implement this interface; `ztest` uses
-//! Bellman Groth16 over BLS12-381. Spartan uses a separate interface and is not
-//! supported here. CLI output remains in `ztest`.
+//!
+//! The runner is generic over [`ProofSystem`]. Bellman and Mirage implement
+//! this interface. `ztest` uses Bellman Groth16 over BLS12-381. Spartan uses a
+//! separate interface and is not supported here. CLI output remains in `ztest`.
 
 use crate::cfg::cfg;
 use crate::compile::{opt_for_proof, to_proof_data};
@@ -104,7 +105,7 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         Err(e) => return Outcome::CompileError(e),
     };
 
-    /// Give the prover all inputs and the verifier only public inputs.
+    // Give the prover all inputs and the verifier only public inputs.
     let mut prover_map: FxHashMap<String, Value> = FxHashMap::default();
     let mut verifier_map: FxHashMap<String, Value> = FxHashMap::default();
     for input in test.inputs() {

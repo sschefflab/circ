@@ -67,6 +67,13 @@ fn array_values(v: &Value) -> Vec<Value> {
     }
 }
 
+fn tuple_values(v: &Value) -> &[Value] {
+    match v {
+        Value::Tuple(values) => values,
+        other => panic!("expected tuple, got {:?}", other),
+    }
+}
+
 /// Assert a Value is an array of field elements with the given values.
 fn assert_field_array(v: &Value, expected: &[u64]) {
     let vals = array_values(v);
@@ -550,27 +557,216 @@ def test_pt(private Point p) {
     )
     .unwrap_err();
     assert!(err.contains("unsupported type"), "{}", err);
-    assert!(err.contains("arrays of scalars"), "{}", err);
+    assert!(err.contains("arrays, and tuples"), "{}", err);
 }
 
 #[test]
-fn tuple_parameter_rejected() {
-    let err = eval(
+fn mixed_scalar_tuple_accepted() {
+    let tests = eval(
         "tuple_param",
-        r#"@test t = (1, true);
-def test_tup(private (field, bool) t) {
-    assert(t.1);
+        r#"@test t = (1, 2, true);
+def test_tup(private (field, u32, bool) t) {
+    assert(t.0 == 1);
+    assert(t.1 == 2u32);
+    assert(t.2);
+}
+"#,
+    )
+    .unwrap();
+
+    let input = &tests[0].inputs()[0];
+    let values = tuple_values(input.value());
+    assert_field(&values[0], 1);
+    assert_uint(&values[1], 32, 2);
+    assert!(matches!(values[2], Value::Bool(true)));
+
+    let entries = input.flat_entries();
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["t.0", "t.1", "t.2"]);
+}
+
+#[test]
+fn nested_tuple_and_array_accepted() {
+    let tests = eval(
+        "nested_tuple",
+        r#"@test t = ([1, 2], (true, 3));
+def test_nested(private (field[2], (bool, u32)) t) {
+    assert(t.0[1] == 2);
+    assert(t.1.0);
+    assert(t.1.1 == 3u32);
+}
+"#,
+    )
+    .unwrap();
+
+    let entries = tests[0].inputs()[0].flat_entries();
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["t.0.0", "t.0.1", "t.1.0", "t.1.1"]);
+}
+
+#[test]
+fn array_of_tuples_accepted() {
+    let tests = eval(
+        "array_of_tuples",
+        r#"@test pairs = [(1, 2), (3, 4)];
+def test_pairs(private (field, u32)[2] pairs) {
+    assert(pairs[0].0 == 1);
+    assert(pairs[1].1 == 4u32);
+}
+"#,
+    )
+    .unwrap();
+
+    let entries = tests[0].inputs()[0].flat_entries();
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["pairs.0.0", "pairs.0.1", "pairs.1.0", "pairs.1.1"]);
+}
+
+#[test]
+fn empty_tuple_rejected() {
+    let err = eval(
+        "empty_tuple",
+        r#"@test t = ();
+def test_empty(private () t) {
+    assert(true);
 }
 "#,
     )
     .unwrap_err();
-    assert!(err.contains("unsupported type"), "{}", err);
+    assert!(err.contains("empty array or tuple"), "{}", err);
+}
+
+#[test]
+fn wrong_tuple_length_rejected() {
+    let err = eval(
+        "tuple_length",
+        r#"@test t = (1,);
+def test_length(private (field, u32) t) {
+    assert(t.0 == 1);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("tuple has 1 element, expected 2"), "{}", err);
+}
+
+#[test]
+fn wrong_tuple_element_type_rejected() {
+    let err = eval(
+        "tuple_element_type",
+        r#"@test t = (true, 2);
+def test_type(private (field, u32) t) {
+    assert(t.0 == 1);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("expected type (field, u32)"), "{}", err);
+    assert!(err.contains("(bool, u32)"), "{}", err);
+}
+
+#[test]
+fn singleton_tuple_accepted() {
+    let tests = eval(
+        "singleton_tuple",
+        r#"@test t = (5,);
+def test_single(private (field,) t) {
+    assert(t.0 == 5);
+}
+"#,
+    )
+    .unwrap();
+
+    let input = &tests[0].inputs()[0];
+    let values = tuple_values(input.value());
+    assert_eq!(values.len(), 1);
+    assert_field(&values[0], 5);
+
+    let entries = input.flat_entries();
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["t.0"]);
+}
+
+#[test]
+fn named_tuple_constant_accepted() {
+    let tests = eval(
+        "named_tuple_const",
+        r#"const (field, u32) T = (7, 9);
+
+@test t = T;
+def test_const(private (field, u32) t) {
+    assert(t.0 == 7);
+    assert(t.1 == 9u32);
+}
+"#,
+    )
+    .unwrap();
+
+    let input = &tests[0].inputs()[0];
+    let values = tuple_values(input.value());
+    assert_field(&values[0], 7);
+    assert_uint(&values[1], 32, 9);
+
+    let entries = input.flat_entries();
+    let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["t.0", "t.1"]);
+}
+
+#[test]
+fn postfix_on_tuple_literal_rejected() {
+    // Must be a contextual Err, not a panic.
+    let err = eval(
+        "postfix_tuple_literal",
+        r#"@test x = (1, 2).0;
+def test_access(private field x) {
+    assert(x == 1);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("postfix expression base must be a named identifier"),
+        "{}",
+        err
+    );
+}
+
+#[test]
+fn tuple_literal_for_scalar_rejected() {
+    let err = eval(
+        "tuple_for_scalar",
+        r#"@test x = (1, 2);
+def test_scalar(private field x) {
+    assert(x == 1);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("tuple expression used where field is expected"),
+        "{}",
+        err
+    );
+}
+
+#[test]
+fn paren_literal_for_singleton_tuple_hinted() {
+    // `(4)` is a parenthesized expression, not a 1-tuple; the error must
+    // point at the trailing-comma rule.
+    let err = eval(
+        "paren_singleton",
+        r#"@test t = (4);
+def test_paren(private (field,) t) {
+    assert(t.0 == 4);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("trailing"), "{}", err);
 }
 
 #[test]
 fn array_of_struct_rejected() {
-    // The support check recurses to the array's base element: an array is
-    // only accepted if that base is a scalar.
     let err = eval(
         "arr_of_struct",
         r#"struct Point {
@@ -620,7 +816,7 @@ def test_zero(private field[0] xs) {
 "#,
     )
     .unwrap_err();
-    assert!(err.contains("zero-length"), "{}", err);
+    assert!(err.contains("empty array or tuple"), "{}", err);
 }
 
 #[test]

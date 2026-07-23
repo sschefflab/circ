@@ -54,17 +54,17 @@ pub fn extract(
     }
 }
 
-/// Converts a scalar or array test input into the named scalar values expected
-/// by the proof pipeline.
+/// Converts a scalar, array, or tuple test input into the named scalar values
+/// expected by the proof pipeline.
 ///
-/// This reverses [`extract`]. Scalars keep their names, while array elements
-/// use dotted indices. For example, a `field[2][2]` named `A` becomes
-/// `A.0.0`, `A.0.1`, `A.1.0`, and `A.1.1`.
+/// This reverses [`extract`]. Scalars keep their names, while array and tuple
+/// elements use dotted indices. For example, a tuple named `t` becomes `t.0`,
+/// `t.1`, and so on.
 ///
 /// [`Array::values`] expands repeated arrays such as `[0; 4]`.
 ///
-/// Tuples and structs are not supported. `eval_test_case` rejects them before
-/// the inputs reach this function.
+/// Structs are not supported. `eval_test_case` rejects them before the inputs
+/// reach this function.
 pub fn flatten(name: &str, value: &Value) -> Vec<(String, Value)> {
     match value {
         Value::Array(arr) => arr
@@ -73,14 +73,19 @@ pub fn flatten(name: &str, value: &Value) -> Vec<(String, Value)> {
             .enumerate()
             .flat_map(|(i, v)| flatten(&format!("{name}.{i}"), &v))
             .collect(),
+        Value::Tuple(values) => values
+            .iter()
+            .enumerate()
+            .flat_map(|(i, value)| flatten(&format!("{name}.{i}"), value))
+            .collect(),
         // The scalar leaf kinds a validated @test input can hold — the same
         // set interp::extract accepts.
         Value::Field(_) | Value::BitVector(_) | Value::Bool(_) | Value::Int(_) => {
             vec![(name.to_string(), value.clone())]
         }
         other => unreachable!(
-            "non-scalar leaf {:?} in @test input {}; \
-             eval_test_inputs rejects non-scalar parameter types",
+            "unsupported value {:?} in @test input {}; \
+             eval_test_inputs rejects unsupported parameter types",
             other, name
         ),
     }

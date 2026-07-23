@@ -50,7 +50,14 @@ fn pretty_value(v: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        // Anything else (tuples, ...): fall back to the default form.
+        // Singletons print as `(5,)` — the trailing comma matches how they
+        // must be written in source.
+        Value::Tuple(vs) if vs.len() == 1 => format!("({},)", pretty_value(&vs[0])),
+        Value::Tuple(vs) => format!(
+            "({})",
+            vs.iter().map(pretty_value).collect::<Vec<_>>().join(", ")
+        ),
+        // Anything else (structs, ...): fall back to the default form.
         other => other.to_string(),
     }
 }
