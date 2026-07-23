@@ -39,6 +39,38 @@ pub struct Inputs {
     pub mode: Mode,
 }
 
+/// Proof backend selected for an `@test` function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TestBackend {
+    /// Groth16 through Bellman.
+    #[default]
+    Groth16,
+    /// Mirage over BLS12-381.
+    Mirage,
+}
+
+impl Display for TestBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Groth16 => f.write_str("groth16"),
+            Self::Mirage => f.write_str("mirage"),
+        }
+    }
+}
+
+/// Settings attached to an `@test` function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TestSettings {
+    backend: TestBackend,
+}
+
+impl TestSettings {
+    /// The proof backend used to run the test.
+    pub fn backend(&self) -> TestBackend {
+        self.backend
+    }
+}
+
 /// A function marked `@test` with validated, evaluated inputs.
 ///
 /// Input names and types must match the function parameters, and each input
@@ -51,6 +83,7 @@ pub struct Inputs {
 #[non_exhaustive]
 pub struct TestCase {
     name: String,
+    settings: TestSettings,
     inputs: Vec<TestCaseInput>,
     /// The source file this test was discovered in — used to recompile it as
     /// an entry point, keeping the case bound to its origin.
@@ -61,6 +94,10 @@ impl TestCase {
     /// The test function's name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+    /// The settings from the test annotation.
+    pub fn settings(&self) -> &TestSettings {
+        &self.settings
     }
     /// The function's evaluated annotation inputs, in parameter order.
     pub fn inputs(&self) -> &[TestCaseInput] {
@@ -285,6 +322,44 @@ fn eval_test_case<'ast>(
         )
     };
 
+    let mut settings = TestSettings::default();
+    let mut backend_seen = false;
+    for setting in &ann.settings {
+        match setting.name.value.as_str() {
+            "backend" if backend_seen => {
+                return Err(diag(
+                    format!("duplicate @test setting backend for {}", f.id.value),
+                    &setting.span,
+                ));
+            }
+            "backend" => {
+                backend_seen = true;
+                settings.backend = match setting.value.value.as_str() {
+                    "groth16" => TestBackend::Groth16,
+                    "mirage" => TestBackend::Mirage,
+                    backend => {
+                        return Err(diag(
+                            format!(
+                                "unsupported @test backend {} for {}; supported backends: groth16, mirage",
+                                backend, f.id.value
+                            ),
+                            &setting.value.span,
+                        ));
+                    }
+                };
+            }
+            name => {
+                return Err(diag(
+                    format!(
+                        "unknown @test setting {} for {}; supported settings: backend",
+                        name, f.id.value
+                    ),
+                    &setting.name.span,
+                ));
+            }
+        }
+    }
+
     // Generic test functions have no way to receive generic arguments from
     // an annotation, so reject them outright.
     if !f.generics.is_empty() {
@@ -431,6 +506,7 @@ fn eval_test_case<'ast>(
 
     Ok(TestCase {
         name: f.id.value.clone(),
+        settings,
         inputs,
         file: file.to_path_buf(),
     })

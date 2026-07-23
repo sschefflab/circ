@@ -1,4 +1,4 @@
-//! End-to-end tests for the `@test` runner using Groth16/BLS12-381.
+//! End-to-end tests for the `@test` runner using Groth16 and Mirage over BLS12-381.
 //!
 //! `zok_test_inputs.rs` stops after discovery and input evaluation. These tests
 //! continue through input flattening, compilation, assertion checking, IR
@@ -8,9 +8,9 @@
 #![cfg(all(feature = "smt", feature = "zokc", feature = "bellman"))]
 
 use bls12_381::Bls12;
-use circ::front::zsharpcurly::{TestCase, ZSharpCurlyFE};
+use circ::front::zsharpcurly::{TestBackend, TestCase, ZSharpCurlyFE};
 use circ::front::Mode;
-use circ::target::r1cs::bellman::Bellman;
+use circ::target::r1cs::{bellman::Bellman, mirage::Mirage};
 use circ::test_runner::{run_test, Outcome};
 use std::path::{Path, PathBuf};
 use std::sync::Once;
@@ -50,12 +50,19 @@ fn discover(path: &Path) -> Vec<TestCase> {
     ZSharpCurlyFE::eval_test_inputs(path.to_path_buf(), Mode::Proof).unwrap()
 }
 
+fn run_selected(test: &TestCase) -> Outcome {
+    match test.settings().backend() {
+        TestBackend::Groth16 => run_test::<Bellman<Bls12>>(test),
+        TestBackend::Mirage => run_test::<Mirage<Bls12>>(test),
+    }
+}
+
 /// Discover and run every test in a single-test file; return its outcome.
 fn run_only(test_name: &str, src: &str) -> Outcome {
     let (_guard, path) = write_file(test_name, src);
     let tests = discover(&path);
     assert_eq!(tests.len(), 1, "expected exactly one @test function");
-    run_test::<Bellman<Bls12>>(&tests[0])
+    run_selected(&tests[0])
 }
 
 #[test]
@@ -70,6 +77,38 @@ def test_mat(private field[2][2] A) {
 "#,
     );
     assert!(matches!(outcome, Outcome::Pass), "got {:?}", outcome);
+}
+
+#[test]
+fn mixed_backends_pass_in_one_file() {
+    let (_guard, path) = write_file(
+        "mixed_backends",
+        r#"@test(backend = groth16) x = 3;
+def test_groth16(private field x) {
+    assert(x * x == 9);
+}
+
+@test(backend = mirage) x = 4;
+def test_mirage(private field x) {
+    assert(x * x == 16);
+}
+"#,
+    );
+    let tests = discover(&path);
+    assert_eq!(tests.len(), 2);
+    assert_eq!(tests[0].settings().backend(), TestBackend::Groth16);
+    assert_eq!(tests[1].settings().backend(), TestBackend::Mirage);
+
+    for test in &tests {
+        let outcome = run_selected(test);
+        assert!(
+            matches!(outcome, Outcome::Pass),
+            "{} with {} returned {:?}",
+            test.name(),
+            test.settings().backend(),
+            outcome
+        );
+    }
 }
 
 #[test]

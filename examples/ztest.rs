@@ -6,17 +6,17 @@
 //! and prints ok / FAILED per test. A test passes when its assertions
 //! evaluate to true on the given inputs (checked by direct IR evaluation —
 //! the proof pipeline alone can pass vacuously when optimization eliminates
-//! a private variable) AND a proof can be produced and verifies (backend:
-//! Groth16 over BLS12-381, hardcoded for the MVP).
+//! a private variable) AND a proof can be produced and verifies. Tests use
+//! Groth16 by default and may select Mirage in the annotation.
 //!
 //! The per-test execution logic lives in [`circ::test_runner`]; this file is
 //! the CLI wrapper.
 use bls12_381::Bls12;
 use circ::cfg::{clap, CircOpt};
-use circ::front::zsharpcurly::ZSharpCurlyFE;
+use circ::front::zsharpcurly::{TestBackend, ZSharpCurlyFE};
 use circ::front::Mode;
 use circ::ir::term::Value;
-use circ::target::r1cs::bellman::Bellman;
+use circ::target::r1cs::{bellman::Bellman, mirage::Mirage};
 use circ::test_runner::{catch, run_test, Outcome};
 use clap::Parser;
 use std::path::PathBuf;
@@ -112,22 +112,28 @@ fn main() {
                 }
             })
             .collect();
-        print!("test {} ({}) ... ", t.name(), inputs.join(", "));
+        print!(
+            "test {} [{}] ({}) ... ",
+            t.name(),
+            t.settings().backend(),
+            inputs.join(", ")
+        );
         // Flush so the prover's own stderr diagnostics (printed when a
         // constraint fails) appear under this test's line, not before it.
         use std::io::Write;
         let _ = std::io::stdout().flush();
 
-        // Groth16 over BLS12-381 is hardcoded for the MVP; run_test is
-        // generic over the proof system, so this is the one place the backend
-        // is chosen.
         let indent = |msg: String| {
             // The prover's message spans several lines; indent them all.
             for line in msg.lines() {
                 println!("    {}", line);
             }
         };
-        match run_test::<Bellman<Bls12>>(t) {
+        let outcome = match t.settings().backend() {
+            TestBackend::Groth16 => run_test::<Bellman<Bls12>>(t),
+            TestBackend::Mirage => run_test::<Mirage<Bls12>>(t),
+        };
+        match outcome {
             Outcome::Pass => {
                 passed += 1;
                 println!("ok");

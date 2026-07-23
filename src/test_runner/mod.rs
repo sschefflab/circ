@@ -2,8 +2,8 @@
 //! proving, and verification.
 //!
 //! The runner is generic over [`ProofSystem`]. Bellman and Mirage implement
-//! this interface. `ztest` uses Bellman Groth16 over BLS12-381. Spartan uses a
-//! separate interface and is not supported here. CLI output remains in `ztest`.
+//! this interface, and `ztest` selects between them for each test. Spartan uses
+//! a separate interface and is not supported here. CLI output remains in `ztest`.
 
 use crate::cfg::cfg;
 use crate::compile::{opt_for_proof, to_proof_data};
@@ -86,9 +86,9 @@ pub fn catch<R>(f: impl FnOnce() -> R) -> Result<R, String> {
 /// Runs one `@test` using the proof system `PS`.
 ///
 /// The test is recompiled from its own source file ([`TestCase::file`]), so the
-/// case stays bound to the file it was discovered in. The config is read from the process-global
-/// [`cfg`]; the caller must have set it (via `circ::cfg::set` or `set_default`)
-/// and it fixes the field/backend for the process.
+/// case stays bound to the file it was discovered in. The config is read from
+/// the process-global [`cfg`]; the caller must have set it (via `circ::cfg::set`
+/// or `set_default`) and it fixes the field and compiler options for the process.
 pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
     // Compile the test function as its own entry point, from the file it was
     // discovered in. A failure here means the test never became a circuit.

@@ -1,5 +1,5 @@
-// Simple @test coverage: scalar, array, and tuple inputs, private/public
-// visibility. All tests pass. Run:
+// Simple @test coverage: backend selection, scalar, array, and tuple inputs,
+// and private/public visibility. All tests pass. Run:
 //   cargo run --example ztest --features zokc -- examples/ZoKratesCurly/pf/coverage_test.zok
 
 // ---- scalar inputs ----
@@ -9,7 +9,7 @@ def test_field(private field x) {
     assert(x == 5);
 }
 
-@test a = 4, b = 6;
+@test(backend = mirage) a = 4, b = 6;
 def test_add(private field a, private field b) {
     assert(a + b == 10);
 }

@@ -25,11 +25,11 @@ pub use ast::{
     NotOperator, Parameter, PosOperator, PostfixExpression, Pragma, PrivateVisibility,
     PublicVisibility, Range, RangeOrExpression, RawString, ReturnStatement, Span, Spread,
     SpreadOrExpression, Statement, StructDefinition, StructField, StructType, SymbolDeclaration,
-    TernaryExpression, TestAnnotation, TestInput, ToExpression, TupleType, Type, TypeDefinition,
-    TypedIdentifier, TypedIdentifierOrAssignee, U16NumberExpression, U16Suffix, U16Type,
-    U32NumberExpression, U32Suffix, U32Type, U64NumberExpression, U64Suffix, U64Type,
-    U8NumberExpression, U8Suffix, U8Type, UnaryExpression, UnaryOperator, Underscore, Visibility,
-    EOI,
+    TernaryExpression, TestAnnotation, TestInput, TestSetting, TestSettingName, TestSettingValue,
+    ToExpression, TupleType, Type, TypeDefinition, TypedIdentifier, TypedIdentifierOrAssignee,
+    U16NumberExpression, U16Suffix, U16Type, U32NumberExpression, U32Suffix, U32Type,
+    U64NumberExpression, U64Suffix, U64Type, U8NumberExpression, U8Suffix, U8Type, UnaryExpression,
+    UnaryOperator, Underscore, Visibility, EOI,
 };
 
 mod ast {
@@ -196,7 +196,35 @@ mod ast {
     #[derive(Debug, FromPest, PartialEq, Clone)]
     #[pest_ast(rule(Rule::test_annotation))]
     pub struct TestAnnotation<'ast> {
+        pub settings: Vec<TestSetting<'ast>>,
         pub inputs: Vec<TestInput<'ast>>,
+        #[pest_ast(outer())]
+        pub span: Span<'ast>,
+    }
+
+    #[derive(Debug, FromPest, PartialEq, Eq, Clone)]
+    #[pest_ast(rule(Rule::test_setting))]
+    pub struct TestSetting<'ast> {
+        pub name: TestSettingName<'ast>,
+        pub value: TestSettingValue<'ast>,
+        #[pest_ast(outer())]
+        pub span: Span<'ast>,
+    }
+
+    #[derive(Debug, FromPest, PartialEq, Eq, Clone)]
+    #[pest_ast(rule(Rule::test_setting_name))]
+    pub struct TestSettingName<'ast> {
+        #[pest_ast(outer(with(span_into_str)))]
+        pub value: String,
+        #[pest_ast(outer())]
+        pub span: Span<'ast>,
+    }
+
+    #[derive(Debug, FromPest, PartialEq, Eq, Clone)]
+    #[pest_ast(rule(Rule::test_setting_value))]
+    pub struct TestSettingValue<'ast> {
+        #[pest_ast(outer(with(span_into_str)))]
+        pub value: String,
         #[pest_ast(outer())]
         pub span: Span<'ast>,
     }
@@ -1631,6 +1659,29 @@ mod tests {
         assert_eq!(ann.inputs[1].name.value, "b");
         assert_eq!(ann.inputs[1].value.span().as_str(), "3 * 3");
     }
+
+    #[test]
+    fn parses_test_settings_and_inputs() {
+        let source = r#"@test(backend = mirage) a = 3, b = 4;
+        def test_backend(private field a, private field b) {
+            assert(a + b == 7);
+        }
+"#;
+        let ast = generate_ast(source).unwrap();
+        let f = match &ast.declarations[0] {
+            SymbolDeclaration::Function(f) => f,
+            _ => panic!("expected a function"),
+        };
+        let ann = f.test.as_ref().expect("should carry @test");
+
+        assert_eq!(ann.settings.len(), 1);
+        assert_eq!(ann.settings[0].name.value, "backend");
+        assert_eq!(ann.settings[0].value.value, "mirage");
+        assert_eq!(ann.inputs.len(), 2);
+        assert_eq!(ann.inputs[0].name.value, "a");
+        assert_eq!(ann.inputs[1].name.value, "b");
+    }
+
     #[test]
     fn parses_array_test_inputs() {
         // The value slot is a full expression, so every array form parses:

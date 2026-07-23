@@ -7,7 +7,7 @@
 
 #![cfg(all(feature = "smt", feature = "zokc"))]
 
-use circ::front::zsharpcurly::{TestCase, ZSharpCurlyFE};
+use circ::front::zsharpcurly::{TestBackend, TestCase, ZSharpCurlyFE};
 use circ::front::Mode;
 use circ::ir::term::Value;
 use std::sync::Once;
@@ -992,6 +992,101 @@ def test_return_style(private field y) -> field {
     )
     .unwrap_err();
     assert!(err.contains("cannot declare a return type"), "{}", err);
+}
+
+#[test]
+fn backend_settings_are_discovered() {
+    let tests = eval(
+        "backend_settings",
+        r#"@test;
+def test_default() {
+    assert(true);
+}
+
+@test();
+def test_empty_settings() {
+    assert(true);
+}
+
+@test(backend = groth16);
+def test_groth16() {
+    assert(true);
+}
+
+@test(backend = mirage) x = 4;
+def test_mirage(private field x) {
+    assert(x == 4);
+}
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(tests.len(), 4);
+    assert_eq!(tests[0].settings().backend(), TestBackend::Groth16);
+    assert_eq!(tests[1].settings().backend(), TestBackend::Groth16);
+    assert_eq!(tests[2].settings().backend(), TestBackend::Groth16);
+    assert_eq!(tests[3].settings().backend(), TestBackend::Mirage);
+    assert_eq!(tests[3].inputs()[0].name(), "x");
+    assert_field(tests[3].inputs()[0].value(), 4);
+}
+
+#[test]
+fn backend_can_still_be_an_input_name() {
+    let tests = eval(
+        "backend_input",
+        r#"@test backend = 3;
+def test_backend_input(private field backend) {
+    assert(backend == 3);
+}
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(tests[0].settings().backend(), TestBackend::Groth16);
+    assert_eq!(tests[0].inputs()[0].name(), "backend");
+}
+
+#[test]
+fn duplicate_backend_setting_rejected() {
+    let err = eval(
+        "duplicate_backend",
+        r#"@test(backend = groth16, backend = mirage);
+def test_duplicate() {
+    assert(true);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("duplicate @test setting backend"), "{}", err);
+}
+
+#[test]
+fn unknown_test_setting_rejected() {
+    let err = eval(
+        "unknown_setting",
+        r#"@test(backnd = groth16);
+def test_unknown() {
+    assert(true);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("unknown @test setting backnd"), "{}", err);
+}
+
+#[test]
+fn unsupported_backend_rejected() {
+    let err = eval(
+        "unsupported_backend",
+        r#"@test(backend = spartan);
+def test_spartan() {
+    assert(true);
+}
+"#,
+    )
+    .unwrap_err();
+    assert!(err.contains("unsupported @test backend spartan"), "{}", err);
+    assert!(err.contains("groth16, mirage"), "{}", err);
 }
 
 #[test]
