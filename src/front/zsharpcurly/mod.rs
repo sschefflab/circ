@@ -39,6 +39,7 @@ pub struct Inputs {
     pub mode: Mode,
 }
 
+//TODO: Add support for Spartan and Dorian Proof Backend.
 /// Proof backend selected for an `@test` function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TestBackend {

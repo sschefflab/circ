@@ -54,19 +54,16 @@ fn install_quiet_hook() {
 }
 
 /// Run `f`, converting a panic on the current thread into `Err(message)`.
+/// The frontend and the prover report failures by panicking. Panic-hook noise
+/// is suppressed for this thread only (see [install_quiet_hook]). Cannot
+/// contain `process::exit` paths (some frontend semantic errors exit rather
+/// than unwind).
 ///
-/// The frontend and the prover report failures by panicking, so callers must
-/// unwind them into a value. Panic-hook noise is suppressed for the duration —
-/// but only for this thread (see [install_quiet_hook]), so concurrent code and
-/// later panics keep the normal hook. Cannot contain `process::exit` paths
-/// (some frontend semantic errors exit rather than unwind).
+/// Public because discovery can panic too ([`ZSharpCurlyFE::eval_test_inputs`]
+/// panics on a parse/load failure).
 ///
-/// TODO: Replace this panic-catching boundary with normal `Result` propagation
-/// once the frontend and prover return structured errors. This requires a
-/// broader error-handling refactor outside the current test-runner scope.
-///
-/// Exposed for callers that must also survive panics from the discovery phase
-/// (e.g. [`ZSharpCurlyFE::eval_test_inputs`] panics on a parse/load failure).
+/// TODO: replace with `Result` propagation once the frontend and prover
+/// return structured errors.
 pub fn catch<R>(f: impl FnOnce() -> R) -> Result<R, String> {
     install_quiet_hook();
     let was = SUPPRESS_PANIC.with(|s| s.replace(true));
@@ -116,8 +113,9 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         prover_map.extend(entries);
     }
 
-    // Check assertions before optimization so removing a private input cannot hide
-    // a failure. Challenge-dependent assertions are still checked during proving.
+    // Evaluate assertions against the annotation inputs before optimization.
+    // Proof verification does not bind private inputs to the particular values
+    // supplied by the test runner, so check those values directly here.
     let held = catch(|| {
         comps
             .get(test.name())

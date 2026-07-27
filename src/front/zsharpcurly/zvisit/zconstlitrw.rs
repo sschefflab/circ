@@ -135,17 +135,6 @@ impl<'ast> ZVisitorMut<'ast> for ZConstLiteralRewriter {
                 Ty::Field => Ok(ast::DecimalSuffix::Field(ast::FieldSuffix {
                     span: dle.span,
                 })),
-                t @ Ty::Tuple(types) => {
-                    let mut msg =
-                        format!("ZConstLiteralRewriter: a literal cannot have tuple type {t}");
-                    if types.len() == 1 {
-                        msg.push_str(
-                            "; a single-element tuple is written (x,) with a trailing \
-                             comma; (x) is a parenthesized expression",
-                        );
-                    }
-                    Err(msg)
-                }
                 _ => Err(
                     "ZConstLiteralRewriter: rewriting DecimalLiteralExpression to incompatible type"
                         .to_string(),
@@ -333,8 +322,8 @@ impl<'ast> ZVisitorMut<'ast> for ZConstLiteralRewriter {
             _ => {
                 return Err(
                     "ZConstLiteralRewriter: postfix expression base must be a named \
-                     identifier; accessing a literal such as (1, 2).0 is not supported \
-                     here; bind the value to a constant and access that instead"
+                     identifier; the CirC ZoKrates frontend does not support accessing \
+                     a literal such as (1, 2).0; bind the value to a constant first"
                         .to_string()
                         .into(),
                 )

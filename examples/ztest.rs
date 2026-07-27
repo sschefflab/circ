@@ -3,10 +3,9 @@
 //! evaluates its annotation inputs to concrete values, then runs each test
 //! through the full in-memory proof pipeline:
 //!   compile (test fn as entry point) -> assert check -> setup -> prove -> verify
-//! and prints ok / FAILED per test. A test passes when its assertions
-//! evaluate to true on the given inputs (checked by direct IR evaluation —
-//! the proof pipeline alone can pass vacuously when optimization eliminates
-//! a private variable) AND a proof can be produced and verifies. Tests use
+//! and prints ok / FAILED per test. A test passes when its assertions hold for
+//! the supplied inputs and its proof verifies. Assertions are evaluated
+//! directly on the unoptimized IR before proof generation. Tests use
 //! Groth16 by default and may select Mirage in the annotation.
 //!
 //! The per-test execution logic lives in [`circ::test_runner`]; this file is

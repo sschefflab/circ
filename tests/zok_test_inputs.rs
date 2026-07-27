@@ -750,9 +750,9 @@ def test_scalar(private field x) {
 }
 
 #[test]
-fn paren_literal_for_singleton_tuple_hinted() {
-    // `(4)` is a parenthesized expression, not a 1-tuple; the error must
-    // point at the trailing-comma rule.
+fn paren_literal_for_singleton_tuple_rejected() {
+    // `(4)` is a parenthesized expression, not a 1-tuple, so the literal
+    // cannot satisfy the tuple hint.
     let err = eval(
         "paren_singleton",
         r#"@test t = (4);
@@ -762,7 +762,7 @@ def test_paren(private (field,) t) {
 "#,
     )
     .unwrap_err();
-    assert!(err.contains("trailing"), "{}", err);
+    assert!(err.contains("incompatible type"), "{}", err);
 }
 
 #[test]
