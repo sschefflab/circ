@@ -334,3 +334,72 @@ def test_linear(private field x) {
         outcome
     );
 }
+
+#[test]
+fn chall_lookup_mirage_passes_full_pipeline() {
+    // Exercises sample_challenge and value_in_array through the Mirage
+    // proof pipeline. Builtin lengths are explicit to avoid generic inference.
+    let outcome = run_only(
+        "chall_lookup",
+        r#"from "EMBED" import value_in_array, sample_challenge;
+
+const field[5] TABLE = [0, 1, 2, 3, 4];
+
+@test(backend = mirage) image = [[1, 6], [7, 2]], bin = [[1, 0], [0, 1]], flat = [1, 0, 0, 1];
+def test_binarize(private field[2][2] image, private field[2][2] bin, private field[4] flat) {
+    for u32 r in 0..2 {
+        for u32 c in 0..2 {
+            // each claimed-binary pixel is a bit
+            assert(bin[r][c] * (1 - bin[r][c]) == 0);
+            // range lookup: bin = 1 -> image in [0,4]; bin = 0 -> image in [4,8]
+            field to_lookup = image[r][c] - 4 * (1 - bin[r][c]);
+            assert(value_in_array::<5>(to_lookup, TABLE));
+        }
+    }
+    // flat == row-major(bin), checked as a polynomial identity at a
+    // verifier challenge; holds for every gamma when consistent
+    field gamma = sample_challenge::<8>([...flat, ...bin[0], ...bin[1]]);
+    field mut lhs = 0;
+    field mut rhs = 0;
+    field mut power = 1;
+    for u32 i in 0..4 {
+        lhs = lhs + flat[i] * power;
+        power = power * gamma;
+    }
+    field mut power2 = 1;
+    for u32 r in 0..2 {
+        for u32 c in 0..2 {
+            rhs = rhs + bin[r][c] * power2;
+            power2 = power2 * gamma;
+        }
+    }
+    assert(lhs == rhs);
+}
+"#,
+    );
+    assert!(matches!(outcome, Outcome::Pass), "got {:?}", outcome);
+}
+
+#[test]
+fn chall_circuit_on_groth16_is_backend_error() {
+    // Control: a challenge circuit under Groth16 is a BackendError (Bellman
+    // rejects round structure at setup) — never Pass, and never a semantic
+    // AssertionFailed. x = y makes the identity hold for every challenge, so
+    // the pre-check passes and the failure is pinned to the backend.
+    let outcome = run_only(
+        "chall_groth16",
+        r#"from "EMBED" import sample_challenge;
+
+@test(backend = groth16) x = 3, y = 3;
+def test_chall(private field x, private field y) {
+    field a = sample_challenge::<2>([x, y]);
+    assert(a * x == a * y);
+}
+"#,
+    );
+    assert!(
+        matches!(outcome, Outcome::BackendError(_)),
+        "got {:?}",
+        outcome
+    );
+}
