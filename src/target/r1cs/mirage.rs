@@ -355,7 +355,7 @@ mod serde_field {
     }
 }
 
-/// The [::bellman] implementation of Groth16.
+/// The Mirage proof system implemented by the Bellman fork.
 pub struct Mirage<E: Engine>(PhantomData<E>);
 
 /// The pk for [mirage]

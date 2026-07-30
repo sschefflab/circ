@@ -326,37 +326,7 @@ fn main() {
                 // vec![Opt::Sha, Opt::ConstantFold, Opt::Mem, Opt::ConstantFold],
             )
         }
-        Mode::Proof | Mode::ProofOfHighValue(_) => {
-            let mut opts = Vec::new();
-
-            opts.push(Opt::ConstantFold(Box::new([])));
-            opts.push(Opt::DeskolemizeWitnesses);
-            opts.push(Opt::ScalarizeVars);
-            opts.push(Opt::Flatten);
-            opts.push(Opt::Sha);
-            opts.push(Opt::ConstantFold(Box::new([])));
-            opts.push(Opt::ParseCondStores);
-            // Tuples must be eliminated before oblivious array elim
-            opts.push(Opt::ConstantFold(Box::new([])));
-            opts.push(Opt::Obliv);
-            // The obliv elim pass produces more tuples, that must be eliminated
-            opts.push(Opt::SetMembership);
-            opts.push(Opt::PersistentRam);
-            opts.push(Opt::VolatileRam);
-            if options.circ.ir.fits_in_bits_ip {
-                opts.push(Opt::FitsInBitsIp);
-            }
-            opts.push(Opt::SkolemizeChallenges);
-            opts.push(Opt::ScalarizeVars);
-            opts.push(Opt::ConstantFold(Box::new([])));
-            opts.push(Opt::Obliv);
-            opts.push(Opt::LinearScan);
-            // The linear scan pass produces more tuples, that must be eliminated
-            opts.push(Opt::Tuple);
-            opts.push(Opt::Flatten);
-            opts.push(Opt::ConstantFold(Box::new([])));
-            opt(cs, opts)
-        }
+        Mode::Proof | Mode::ProofOfHighValue(_) => circ::compile::opt_for_proof(cs, cfg()),
     };
     println!("Running backend");
     match options.backend {
@@ -427,9 +397,13 @@ fn main() {
                         )
                         .unwrap(),
                         #[cfg(not(feature = "spartan"))]
-                        ProofImpl::Spartan | ProofImpl::Dorian => panic!("Missing feature: spartan"),
+                        ProofImpl::Spartan | ProofImpl::Dorian => {
+                            panic!("Missing feature: spartan")
+                        }
                         #[cfg(not(feature = "bellman"))]
-                        ProofImpl::Groth16 | ProofImpl::Mirage => panic!("Missing feature: bellman"),
+                        ProofImpl::Groth16 | ProofImpl::Mirage => {
+                            panic!("Missing feature: bellman")
+                        }
                     };
                 }
                 #[cfg(feature = "bellman")]
@@ -444,7 +418,9 @@ fn main() {
                             verifier_key,
                         )
                         .unwrap(),
-                        ProofImpl::Spartan | ProofImpl::Dorian => panic!("Spartan/Dorian is not CP"),
+                        ProofImpl::Spartan | ProofImpl::Dorian => {
+                            panic!("Spartan/Dorian is not CP")
+                        }
                     };
                 }
                 #[cfg(not(feature = "bellman"))]
