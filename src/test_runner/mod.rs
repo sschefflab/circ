@@ -113,9 +113,12 @@ pub fn run_test<PS: ProofSystem>(test: &TestCase) -> Outcome {
         prover_map.extend(entries);
     }
 
-    // Evaluate assertions against the annotation inputs before optimization.
-    // Proof verification does not bind private inputs to the particular values
-    // supplied by the test runner, so check those values directly here.
+    //Optimization replaces private values with constants when required by the circuit, 
+    //allowing some private inputs that would fail assertions to actually pass proof verification. 
+    //We check these asserts separately, before optimization, and fail on these inputs.
+    //Note: this differs from what the real prove/verify pipeline does!
+    //TODO: Make this a warning instead of a failure.
+
     let held = catch(|| {
         comps
             .get(test.name())
