@@ -1,6 +1,6 @@
 // Simple @test coverage: backend selection, scalar, array, and tuple inputs,
 // and private/public visibility. All tests pass. Run:
-//   cargo run --example ztest --features zokc -- examples/ZoKratesCurly/pf/coverage_test.zok
+//   cargo run --example ztest --features zokc -- examples/ZoKratesCurly/pf/ztest/coverage_test.zok
 
 // ---- scalar inputs ----
 

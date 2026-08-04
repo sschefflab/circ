@@ -90,3 +90,22 @@ The commands below use `poly_mult.zok` as an example. Substitute your own circui
   --inputs examples/ZoKrates/pf/chall/poly_mult_curve25519.zok.vin \
   --action verify
 ```
+
+---
+
+## `ztest.rs` — Test your circuits written in ZoKratesCurly
+
+**Step 1: Write tests**
+Annotate test functions with `@test(backend={groth16,mirage}) <input1>=<val1>, <input2>=<val2>, ...;` as in examples/ZoKratesCurly/pf/ztest/coverage_test.zok.
+The backend defaults to groth16 and may be omitted in that case.
+The annotated function should act like `main`; it must have no generics, and it must make assertions. It should not have a return value.
+
+**Step 2: Run tests**
+```
+./target/release/examples/ztest path/to/your/test/file
+```
+
+For example:
+```
+./target/release/examples/ztest examples/ZoKratesCurly/pf/ztest/coverage_test.zok
+```
